@@ -1,0 +1,7 @@
+*** Using Compiler 'V5.06 update 7 (build 960)', folder: 'G:\keil5\ARM\5.06_SLENK\Bin'
+Build target 'T1'
+Note: source file '..\OLED\oled.c' - object file renamed from '.\Objects\oled.o' to '.\Objects\oled_1.o'.compiling main.c...
+linking...
+Program Size: Code=8680 RO-data=7700 RW-data=252 ZI-data=1556  
+".\Objects\T1.axf" - 0 Error(s), 0 Warning(s).
+Build Time Elapsed:  00:00:01

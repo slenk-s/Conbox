@@ -1,0 +1,15 @@
+# Keil MDK-ARM build output
+MDK-ARM/Objects/*.o
+MDK-ARM/Objects/*.d
+MDK-ARM/Objects/*.crf
+MDK-ARM/Objects/*.htm
+MDK-ARM/Objects/*.htm.*
+MDK-ARM/Objects/*.lnp
+MDK-ARM/Objects/*.dep
+MDK-ARM/Listings/
+
+# Direct armcc/armasm build tree (link.bat output)
+build_tmp/
+
+# Stray object files
+*.o
