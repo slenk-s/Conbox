@@ -53,7 +53,6 @@
 
 /* Public variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private variables ---------------------------------------------------------*/
@@ -70,6 +69,7 @@
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
+
 /***************************************
  * @brief GPIO Init
  **************************************/
@@ -84,9 +84,25 @@ void Studio_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  HAL_GPIO_WritePin(GPIOA, LED_R_Pin|LED_G_Pin|LED_B_Pin|LED_TEST_Pin, GPIO_PIN_RESET);
+  /* 灯 PA4/PA5/PA6: 推挽输出, 高电平点亮 / 低电平熄灭, 上电先熄灭。
+   * 必须推挽 —— 开漏口写 SET 是浮空, 拉不起共阴灯, 灯永远不亮。
+   * 继电器 PA12: 开漏输出, 低电平吸合 / 高电平释放, 上电先释放。
+   * 不能跟灯共用一组, 否则上电把继电器也拉成熄灭态 = 上电就吸合。 */
+  HAL_GPIO_WritePin(GPIOA, LED_R_Pin|LED_G_Pin|LED_B_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, KEY_Con_Pin, GPIO_PIN_SET);
-  GPIO_InitStruct.Pin = LED_R_Pin|LED_G_Pin|LED_B_Pin|LED_TEST_Pin|KEY_Con_Pin;
+
+  GPIO_InitStruct.Pin = LED_R_Pin|LED_G_Pin|LED_B_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = KEY_Con_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  HAL_GPIO_WritePin(GPIOA, LED_TEST_Pin, GPIO_PIN_SET);
+  GPIO_InitStruct.Pin = LED_TEST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

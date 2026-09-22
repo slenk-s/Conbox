@@ -29,6 +29,7 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
+
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __PY32F003_IT_H__
 #define __PY32F003_IT_H__
@@ -57,10 +58,6 @@ extern "C" {
 /* USER CODE BEGIN EM */
 
 /* USER CODE END EM */
-
-/* USER CODE BEGIN Prototypes */
-
-/* USER CODE END Prototypes */
 
 /* Exported functions prototypes ---------------------------------------------*/
 void NMI_Handler(void);

@@ -48,9 +48,10 @@ extern "C" {
 #define HAL_CORTEX_MODULE_ENABLED
 #define HAL_DMA_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
+#define HAL_GPIO_MODULE_ENABLED
 #define HAL_EXTI_MODULE_ENABLED
 /* #define HAL_ADC_MODULE_ENABLED */
-#define HAL_I2C_MODULE_ENABLED
+/* #define HAL_I2C_MODULE_ENABLED */
 /* #define HAL_SPI_MODULE_ENABLED */
 #define HAL_USART_MODULE_ENABLED
 #define HAL_UART_MODULE_ENABLED
@@ -60,8 +61,6 @@ extern "C" {
 /* #define HAL_RTC_MODULE_ENABLED */
 /* #define HAL_COMP_MODULE_ENABLED */
 /* #define HAL_OPA_MODULE_ENABLED */
-#define HAL_GPIO_MODULE_ENABLED
-#define HAL_PWR_MODULE_ENABLED
 /* #define HAL_CTC_MODULE_ENABLED */
 /* #define HAL_IWDG_MODULE_ENABLED */
 /* #define HAL_WWDG_MODULE_ENABLED */
@@ -72,7 +71,6 @@ extern "C" {
 /* #define HAL_CAN_MODULE_ENABLED */
 /* #define HAL_DAC_MODULE_ENABLED */
 /* #define HAL_CORDIC_MODULE_ENABLED */
-
 
 /* ########################## Oscillator Values adaptation ####################*/
 #if !defined  (HSI_VALUE)
@@ -135,7 +133,6 @@ extern "C" {
  */
 /* #define USE_FULL_ASSERT       1U */
 
-
 /* ################## SPI peripheral configuration ########################## */
 
 /* CRC FEATURE: Use to activate CRC feature inside HAL SPI Driver
@@ -156,6 +153,7 @@ extern "C" {
 #ifdef HAL_RCC_MODULE_ENABLED
 #include "py32f0xx_hal_rcc.h"
 #endif /* HAL_RCC_MODULE_ENABLED */
+
 #ifdef HAL_PWR_MODULE_ENABLED
 #include "py32f0xx_hal_pwr.h"
 #endif /* HAL_PWR_MODULE_ENABLED */
@@ -171,6 +169,10 @@ extern "C" {
 #ifdef HAL_FLASH_MODULE_ENABLED
 #include "py32f0xx_hal_flash.h"
 #endif /* HAL_FLASH_MODULE_ENABLED */
+
+#ifdef HAL_GPIO_MODULE_ENABLED
+#include "py32f0xx_hal_gpio.h"
+#endif /* HAL_GPIO_MODULE_ENABLED */
 
 #ifdef HAL_EXTI_MODULE_ENABLED
 #include "py32f0xx_hal_exti.h"
@@ -220,14 +222,6 @@ extern "C" {
 #include "py32f0xx_hal_opa.h"
 #endif /* HAL_OPA_MODULE_ENABLED */
 
-#ifdef HAL_GPIO_MODULE_ENABLED
-#include "py32f0xx_hal_gpio.h"
-#endif /* HAL_GPIO_MODULE_ENABLED */
-
-#ifdef HAL_PWR_MODULE_ENABLED
-#include "py32f0xx_hal_pwr.h"
-#endif /* HAL_PWR_MODULE_ENABLED */
-
 #ifdef HAL_CTC_MODULE_ENABLED
 #include "py32f0xx_hal_ctc.h"
 #endif /* HAL_CTC_MODULE_ENABLED */
@@ -267,7 +261,6 @@ extern "C" {
 #ifdef HAL_CORDIC_MODULE_ENABLED
 #include "py32f0xx_hal_cordic.h"
 #endif /* HAL_CORDIC_MODULE_ENABLED */
-
 
 /* Exported macro ------------------------------------------------------------*/
 #ifdef  USE_FULL_ASSERT

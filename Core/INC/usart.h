@@ -44,25 +44,18 @@ extern "C" {
 
 /* USER CODE END Includes */
 
-
+/* USER CODE BEGIN defines */
+/* USER CODE END defines */
 
 extern UART_HandleTypeDef husart2;
 extern UART_HandleTypeDef husart1;
 
-
-/* USER CODE BEGIN defines */
-
-/* USER CODE END defines */
-
 void Studio_USART2_Init(void);
 void Studio_USART1_Init(void);
-
-
 
 /* USER CODE BEGIN Prototypes */
 
 /* USER CODE END Prototypes */
-
 
 #ifdef __cplusplus
 }

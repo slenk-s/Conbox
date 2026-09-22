@@ -77,14 +77,13 @@ void HAL_MspInit(void)
   /* USER CODE END HAL_MspInit 0 */
   __HAL_RCC_SYSCFG_CLK_ENABLE();
   __HAL_RCC_PWR_CLK_ENABLE();
-
+  /* Enable access to the backup domain (RTC/TAMP registers) */
+  HAL_PWR_EnableBkUpAccess();
 
   /* USER CODE BEGIN HAL_MspInit 1 */
 
   /* USER CODE END HAL_MspInit 1 */
-
 }
-
 
 /* USER CODE BEGIN ExternalFunctions */
 

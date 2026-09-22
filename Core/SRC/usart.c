@@ -55,7 +55,6 @@
 UART_HandleTypeDef husart2;
 UART_HandleTypeDef husart1;
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private variables ---------------------------------------------------------*/
@@ -72,34 +71,7 @@ UART_HandleTypeDef husart1;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
-/***************************************
- * @brief USART2 Init
- **************************************/
-void Studio_USART2_Init(void)
-{
-  /* USER CODE BEGIN Studio_USART2_Init 0 */
 
-  /* USER CODE END Studio_USART2_Init 0 */
-
-  husart2.Instance = USART2;
-  husart2.Init.BaudRate = 9600;
-  husart2.Init.WordLength = UART_WORDLENGTH_8B;
-  husart2.Init.Parity = UART_PARITY_NONE;
-  husart2.Init.StopBits = UART_STOPBITS_1;
-  husart2.Init.Mode = UART_MODE_TX_RX;
-  husart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  husart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  husart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-
-  if (HAL_UART_Init(&husart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  
-  /* USER CODE BEGIN Studio_USART2_Init 1 */
-
-  /* USER CODE END Studio_USART2_Init 1 */
-}
 /***************************************
  * @brief USART1 Init
  **************************************/
@@ -118,49 +90,49 @@ void Studio_USART1_Init(void)
   husart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   husart1.Init.OverSampling = UART_OVERSAMPLING_16;
   husart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-
   if (HAL_UART_Init(&husart1) != HAL_OK)
   {
     Error_Handler();
   }
-  
+
   /* USER CODE BEGIN Studio_USART1_Init 1 */
 
   /* USER CODE END Studio_USART1_Init 1 */
 }
 
-void HAL_UART_MspInit(UART_HandleTypeDef* huart)
+/***************************************
+ * @brief USART2 Init
+ **************************************/
+void Studio_USART2_Init(void)
+{
+  /* USER CODE BEGIN Studio_USART2_Init 0 */
+
+  /* USER CODE END Studio_USART2_Init 0 */
+
+  husart2.Instance = USART2;
+  husart2.Init.BaudRate = 9600;
+  husart2.Init.WordLength = UART_WORDLENGTH_8B;
+  husart2.Init.Parity = UART_PARITY_NONE;
+  husart2.Init.StopBits = UART_STOPBITS_1;
+  husart2.Init.Mode = UART_MODE_TX_RX;
+  husart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  husart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  husart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&husart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Studio_USART2_Init 1 */
+
+  /* USER CODE END Studio_USART2_Init 1 */
+}
+
+void HAL_UART_MspInit(UART_HandleTypeDef* husart)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  if (huart->Instance == USART2)
-  {
-  /* USER CODE BEGIN USART2_MspInit 0 */
-
-  /* USER CODE END USART2_MspInit 0 */
-    __HAL_RCC_USART2_CLK_ENABLE();
-
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    /**USART2 GPIO Configuration
-    *PA0     ------> USART2_TX
-    *PA1     ------> USART2_RX
-    */
-
-    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF9_USART2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART2_IRQn);
-
-  /* USER CODE BEGIN USART2_MspInit 1 */
-
-  /* USER CODE END USART2_MspInit 1 */
-  }
-  if (huart->Instance == USART1)
+  if (husart->Instance == USART1)
   {
   /* USER CODE BEGIN USART1_MspInit 0 */
 
@@ -182,31 +154,41 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 
     HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
-
   /* USER CODE BEGIN USART1_MspInit 1 */
 
   /* USER CODE END USART1_MspInit 1 */
   }
+  if (husart->Instance == USART2)
+  {
+  /* USER CODE BEGIN USART2_MspInit 0 */
+
+  /* USER CODE END USART2_MspInit 0 */
+    __HAL_RCC_USART2_CLK_ENABLE();
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    /**USART2 GPIO Configuration
+    *PA0     ------> USART2_TX
+    *PA1     ------> USART2_RX
+    */
+
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF9_USART2;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
+  /* USER CODE BEGIN USART2_MspInit 1 */
+
+  /* USER CODE END USART2_MspInit 1 */
+  }
 }
 
-void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
+void HAL_UART_MspDeInit(UART_HandleTypeDef* husart)
 {
-  if (huart->Instance == USART2)
-  {
-  /* USER CODE BEGIN USART2_MspDeInit 0 */
-
-  /* USER CODE END USART2_MspDeInit 0 */
-    __HAL_RCC_USART2_CLK_DISABLE();
-
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_1);
-
-    /* USART2 interrupt Deinit */
-    HAL_NVIC_DisableIRQ(USART2_IRQn);
-  /* USER CODE BEGIN USART2_MspDeInit 1 */
-
-  /* USER CODE END USART2_MspDeInit 1 */
-  }
-  if (huart->Instance == USART1)
+  if (husart->Instance == USART1)
   {
   /* USER CODE BEGIN USART1_MspDeInit 0 */
 
@@ -214,12 +196,25 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
     __HAL_RCC_USART1_CLK_DISABLE();
 
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2|GPIO_PIN_3);
-
     /* USART1 interrupt Deinit */
     HAL_NVIC_DisableIRQ(USART1_IRQn);
   /* USER CODE BEGIN USART1_MspDeInit 1 */
 
   /* USER CODE END USART1_MspDeInit 1 */
+  }
+  if (husart->Instance == USART2)
+  {
+  /* USER CODE BEGIN USART2_MspDeInit 0 */
+
+  /* USER CODE END USART2_MspDeInit 0 */
+    __HAL_RCC_USART2_CLK_DISABLE();
+
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_1);
+    /* USART2 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(USART2_IRQn);
+  /* USER CODE BEGIN USART2_MspDeInit 1 */
+
+  /* USER CODE END USART2_MspDeInit 1 */
   }
 }
 

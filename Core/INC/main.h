@@ -71,8 +71,6 @@ extern "C" {
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 /* USER CODE BEGIN EFP */
-void UartTest(void);              /* 自发自收: U1<->U2 交叉回环 */
-extern uint8_t s_utRes[2];        /* 方向1/方向2 各一位: 'P' 通过 / 'F' 失败 / '-' 未测 */
 
 /* USER CODE END EFP */
 
@@ -80,7 +78,6 @@ extern uint8_t s_utRes[2];        /* 方向1/方向2 各一位: 'P' 通过 / 'F'
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
-
 
 #ifdef __cplusplus
 }

@@ -29,6 +29,7 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
+
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __RCC_H__
 #define __RCC_H__
@@ -44,16 +45,13 @@ extern "C" {
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN defines */
-
 /* USER CODE END defines */
-
 
 void Studio_RCC_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
 /* USER CODE END Prototypes */
-
 
 #ifdef __cplusplus
 }

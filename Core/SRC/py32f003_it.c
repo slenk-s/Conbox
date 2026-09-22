@@ -74,6 +74,7 @@ extern UART_HandleTypeDef husart1;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
+
 /*****************************************************************************/
 /*           Cortex-M Processor Interruption and Exception Handlers          */
 /*****************************************************************************/

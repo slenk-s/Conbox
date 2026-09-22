@@ -55,7 +55,6 @@
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private variables ---------------------------------------------------------*/
@@ -72,6 +71,7 @@ TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
+
 /***************************************
  * @brief TIM1 Init
  **************************************/
@@ -80,7 +80,6 @@ void Studio_TIM1_Init(void)
   /* USER CODE BEGIN Studio_TIM1_Init 0 */
 
   /* USER CODE END Studio_TIM1_Init 0 */
-
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
@@ -95,6 +94,7 @@ void Studio_TIM1_Init(void)
   {
     Error_Handler();
   }
+
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
   {
@@ -112,6 +112,7 @@ void Studio_TIM1_Init(void)
 
   /* USER CODE END Studio_TIM1_Init 1 */
 }
+
 /***************************************
  * @brief TIM3 Init
  **************************************/
@@ -120,7 +121,6 @@ void Studio_TIM3_Init(void)
   /* USER CODE BEGIN Studio_TIM3_Init 0 */
 
   /* USER CODE END Studio_TIM3_Init 0 */
-
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
@@ -135,6 +135,7 @@ void Studio_TIM3_Init(void)
   {
     Error_Handler();
   }
+
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
   {
@@ -164,7 +165,6 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim)
 
     HAL_NVIC_SetPriority(TIM1_BRK_UP_TRG_COM_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
-
     HAL_NVIC_SetPriority(TIM1_CC_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(TIM1_CC_IRQn);
 
@@ -172,7 +172,7 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim)
 
   /* USER CODE END TIM1_MspInit 1 */
   }
-  if (htim->Instance == TIM3)
+  else if (htim->Instance == TIM3)
   {
   /* USER CODE BEGIN TIM3_MspInit 0 */
 
@@ -199,12 +199,13 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim)
 
     /* TIM1 interrupt Deinit */
     HAL_NVIC_DisableIRQ(TIM1_BRK_UP_TRG_COM_IRQn);
+    /* TIM1 interrupt Deinit */
     HAL_NVIC_DisableIRQ(TIM1_CC_IRQn);
   /* USER CODE BEGIN TIM1_MspDeInit 1 */
 
   /* USER CODE END TIM1_MspDeInit 1 */
   }
-  if (htim->Instance == TIM3)
+  else if (htim->Instance == TIM3)
   {
   /* USER CODE BEGIN TIM3_MspDeInit 0 */
 

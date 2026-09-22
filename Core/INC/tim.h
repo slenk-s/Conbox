@@ -31,8 +31,8 @@
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __TIM3_H__
-#define __TIM3_H__
+#ifndef __TIM_H__
+#define __TIM_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,28 +44,21 @@ extern "C" {
 
 /* USER CODE END Includes */
 
-
+/* USER CODE BEGIN defines */
+/* USER CODE END defines */
 
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim3;
 
-
-/* USER CODE BEGIN defines */
-
-/* USER CODE END defines */
-
 void Studio_TIM1_Init(void);
 void Studio_TIM3_Init(void);
-
-
 
 /* USER CODE BEGIN Prototypes */
 
 /* USER CODE END Prototypes */
 
-
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __TIM3_H__ */
+#endif /* __TIM_H__ */

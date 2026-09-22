@@ -3,6 +3,7 @@
 
 #include "py32f0xx_hal.h"
 #include "stdio.h"
+#include <stdbool.h>
 #include "stdlib.h"
 #include "gpio.h"	// 引脚号统一取自 Mcu Studio 生成的 pin map，勿在此硬编码
 
@@ -32,6 +33,9 @@ void OLED_WR_Byte(uint8_t dat,uint8_t mode);
 void OLED_DisPlay_On(void);
 void OLED_DisPlay_Off(void);
 void OLED_Refresh(void);
+void OLED_RefreshBegin(void);
+void OLED_RefreshStep(uint8_t budget);
+bool OLED_RefreshPending(void);
 void OLED_Clear(void);
 void OLED_DrawPoint(uint8_t x,uint8_t y,uint8_t t);
 void OLED_DrawLine(uint8_t x1,uint8_t y1,uint8_t x2,uint8_t y2,uint8_t mode);

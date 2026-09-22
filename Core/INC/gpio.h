@@ -44,7 +44,8 @@ extern "C" {
 
 /* USER CODE END Includes */
 
-
+/* USER CODE BEGIN defines */
+/* USER CODE END defines */
 
 #define LED_R_Pin GPIO_PIN_4
 #define LED_R_Port GPIOA
@@ -63,17 +64,11 @@ extern "C" {
 #define OLED_SDA_Pin GPIO_PIN_7
 #define OLED_SDA_Port GPIOB
 
-/* USER CODE BEGIN defines */
-
-/* USER CODE END defines */
-
 void Studio_GPIO_Init(void);
-
 
 /* USER CODE BEGIN Prototypes */
 
 /* USER CODE END Prototypes */
-
 
 #ifdef __cplusplus
 }

@@ -13,7 +13,7 @@ uint8_t OLED_GRAM[OLED_WIDTH][OLED_PAGES];
 uint8_t x_low_offset;
 uint8_t x_high_offset;
 uint8_t display_angle = 0;  // 0=0°, 1=90°, 2=180°, 3=270°
-uint8_t y_offset = 10;  // 已配 0x40 起始行 + 0xD3 偏移0，无需额外像素偏移
+uint8_t y_offset = 0;  // 已配 0x40 起始行 + 0xD3 偏移0，无需额外像素偏移
 
 //颜色反转
 void OLED_ColorTurn(uint8_t i)
@@ -166,6 +166,52 @@ void OLED_Refresh(void)
 		}
 		I2C_Stop();
 	}
+}
+
+
+/* Cooperative refresh. Each address command gets its own service slice.
+ * The caller owns the framebuffer; no interrupts are disabled here. */
+static uint8_t refresh_page, refresh_column, refresh_stage;
+static bool refresh_pending;
+void OLED_RefreshBegin(void)
+{
+    refresh_page = refresh_column = refresh_stage = 0;
+    refresh_pending = true;
+}
+bool OLED_RefreshPending(void) { return refresh_pending; }
+void OLED_RefreshStep(uint8_t budget)
+{
+    uint8_t sent = 0;
+    if (!refresh_pending || budget == 0u) return;
+    if (budget > 4u) budget = 4u;
+    if (refresh_stage == 0u) {
+        OLED_WR_Byte((uint8_t)(0xB0u + refresh_page), OLED_CMD);
+        refresh_stage = 1;
+    } else if (refresh_stage == 1u) {
+        OLED_WR_Byte(x_low_offset, OLED_CMD);
+        refresh_stage = 2;
+    } else if (refresh_stage == 2u) {
+        OLED_WR_Byte((uint8_t)(0x10u + x_high_offset), OLED_CMD);
+        refresh_stage = 3;
+    } else {
+        I2C_Start();
+        Send_Byte(OLED_ADDR);
+        if (I2C_WaitAck()) { I2C_Stop(); refresh_pending = false; return; }
+        Send_Byte(0x40);
+        if (I2C_WaitAck()) { I2C_Stop(); refresh_pending = false; return; }
+        while (sent < budget && refresh_column < OLED_WIDTH) {
+            Send_Byte(OLED_GRAM[refresh_column][refresh_page]);
+            if (I2C_WaitAck()) { I2C_Stop(); refresh_pending = false; return; }
+            ++refresh_column;
+            ++sent;
+        }
+        I2C_Stop();
+        if (refresh_column == OLED_WIDTH) {
+            refresh_column = refresh_stage = 0;
+            ++refresh_page;
+            if (refresh_page == OLED_PAGES) refresh_pending = false;
+        }
+    }
 }
 
 //清屏

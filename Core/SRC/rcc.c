@@ -53,7 +53,6 @@
 
 /* Public variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private variables ---------------------------------------------------------*/
@@ -70,6 +69,7 @@
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
+
 /***************************************
  * @brief RCC Init
  **************************************/
@@ -78,7 +78,6 @@ void Studio_RCC_Init(void)
   /* USER CODE BEGIN Studio_RCC_Init 0 */
 
   /* USER CODE END Studio_RCC_Init 0 */
-
   LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
   while(LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0)
   {
@@ -97,7 +96,6 @@ void Studio_RCC_Init(void)
   while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSE)
   {
   }
-
   /* Update the SystemCoreClock global variable(which can be updated also through SystemCoreClockUpdate function) */
   LL_SetSystemCoreClock(12000000);
 
