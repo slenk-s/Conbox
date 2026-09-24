@@ -72,15 +72,15 @@ void BarcodeView_Init(void)
 }
 void BarcodeView_Format(const AppSnapshot *s, char lines[6][15])
 {
-    static const char *const labels[] = {"IDLE", "RECOGNIZING", "RELEASING", "FAILED", "DUPLICATE"};
+    static const char *const labels[] = {"IDLE", "RECOGNIZING", "RELEASING", "FAILED"};
     uint8_t i;
-    const char *label = labels[(unsigned)s->view <= VIEW_DUPLICATE ? s->view : VIEW_IDLE];
+    const char *label = labels[(unsigned)s->view <= VIEW_FAILED ? s->view : VIEW_IDLE];
     for (i = 0; i < 6u; ++i) { memset(lines[i], ' ', 14); lines[i][14] = '\0'; }
     memcpy(lines[0], label, strlen(label));
-    memcpy(lines[1], "COUNT:000/150", 12);
-    lines[1][6] = (char)('0' + s->count / 100u);
-    lines[1][7] = (char)('0' + (s->count / 10u) % 10u);
-    lines[1][8] = (char)('0' + s->count % 10u);
+    memcpy(lines[1], "PASS:000", 8);
+    lines[1][5] = (char)('0' + s->count / 100u);
+    lines[1][6] = (char)('0' + (s->count / 10u) % 10u);
+    lines[1][7] = (char)('0' + s->count % 10u);
     memcpy(lines[2], "BARCODE:", 8);
     for (i = 0; i < s->current.len && i < BARCODE_MAX_LEN; ++i) {
         uint8_t c = s->current.data[i];

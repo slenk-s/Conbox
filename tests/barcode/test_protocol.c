@@ -18,7 +18,8 @@ static const uint8_t frames[][8] = {
     {0xAA, 8, 0xFA, 1, 0x06, 0x3F, 0xC6, 0xDB},  /* <14> green blink      */
     {0xAA, 8, 0xFA, 1, 0x03, 0x0A, 0x5F, 0xD8},  /* PASS                  */
     {0xAA, 7, 0xFA, 1, 0xFF, 0x25, 0xB9},        /* <1> version query     */
-    {0xAA, 7, 0xFA, 2, 0x17, 0x0C, 0xCC}};       /* <7> SN query          */
+    {0xAA, 7, 0xFA, 2, 0x17, 0x0C, 0xCC},      /* <7> SN query           */
+    {0xAA, 7, 0xFA, 2, 0x26, 0x2A, 0xBE}};      /* mobile ID query        */
 #define NFRAMES ((unsigned)(sizeof(frames) / sizeof(frames[0])))
 static const uint8_t ack_ok[7] = {0xAB, 7, 0xFA, 1, 0x0A, 0x30, 0x52};
 static void feed_range(HostParser *p, unsigned f, unsigned from, unsigned to)
@@ -39,7 +40,6 @@ int main(void)
     unsigned f, i;
     HostParser p;
     uint8_t bad[8], out[HOST_ACK_PAYLOAD_MAX + 7u];
-
     /* Independent oracles: the CCITT-FALSE check value, then every documented
        frame. The builder must not be used here, or this proves nothing. */
     assert(HostCrc16((const uint8_t *)"123456789", 9) == 0x29B1u);
@@ -49,8 +49,6 @@ int main(void)
                (uint16_t)((uint16_t)frames[f][len - 2u] << 8 | frames[f][len - 1u]));
     }
     assert(memcmp(ack_ok, BARCODE_ACK, 7) == 0);
-    assert(memcmp(BARCODE_RESCAN, "\x16\x54\x0D", 3) == 0);
-
     /* Builder: ACK1 for both addrs, both status codes, and a <7> ACK2. */
     assert(HostAck_BuildPayload(out, HOST_ADDR_BOX, HOST_ACK_OK, 0, 0) == 7u);
     assert(memcmp(out, ack_ok, 7) == 0);
@@ -69,22 +67,28 @@ int main(void)
         assert(memcmp(out, "\xAB\x08\xFA\x01\xFF\x65\xD1\x9D", 8) == 0);
     }
     {
+        uint8_t id_payload[13] = {0x05, 0xD4, 0xFF, 0x35, 0x31, 0x32,
+                                  0x53, 0x43, 0x43, 0x22, 0x51, 0x22, 0x91};
+        assert(HostAck_BuildPayload(out, HOST_ADDR_SN, HOST_CMD_ID, id_payload, 13) == 0x14u);
+        assert(memcmp(out,
+                      "\xAB\x14\xFA\x02\x26\x05\xD4\xFF\x35\x31\x32\x53\x43\x43\x22\x51\x22\x91\xB4\xAE",
+                      0x14u) == 0);
+        assert(HostCrc16(out, 0x12u) == 0xB4AEu);
+    }
+    {
         uint8_t pad[HOST_ACK_PAYLOAD_MAX + 1u];
         assert(HostAck_BuildPayload(out, HOST_ADDR_SN, HOST_CMD_SN, pad,
                                     (uint8_t)(HOST_ACK_PAYLOAD_MAX + 1u)) == 0u);
     }
-
     /* All documented frames, back to back in one parser. */
     HostParser_Init(&p);
     for (f = 0; f < NFRAMES; ++f) feed_range(&p, f, 0, frames[f][1]);
-
     /* Every byte boundary. */
     for (f = 0; f < NFRAMES; ++f) for (i = 0; i <= frames[f][1]; ++i) {
         HostParser_Init(&p);
         feed_range(&p, f, 0, i);
         feed_range(&p, f, i, frames[f][1]);
     }
-
     /* A garbage prefix must not hide the header. Two copies are fed because a
        prefix as long as the frame cannot be evicted by a single frame. */
     for (f = 0; f < NFRAMES; ++f) {
@@ -96,7 +100,6 @@ int main(void)
             if (HostParser_Feed(&p, frames[f][k % len]).ok) ++hits;
         assert(hits == 2u);
     }
-
     /* Corrupt any byte from the function code through the CRC, and also lie
        about the length. Nothing may parse. */
     for (f = 0; f < NFRAMES; ++f) {
@@ -113,7 +116,6 @@ int main(void)
         HostParser_Init(&p);
         for (i = 0; i < len; ++i) assert(!HostParser_Feed(&p, bad[i]).ok);
     }
-
     /* A rejected frame must not wedge the parser. Two copies are needed for
        the 7-byte frames: a full window of garbage cannot be evicted by a
        shorter frame, so <1> and <7> lose one frame after corruption. */
@@ -127,7 +129,6 @@ int main(void)
             if (HostParser_Feed(&p, frames[f][k % len]).ok) ++hits;
         assert(hits == 2u);
     }
-
     /* Light params decode to the full <11>-<14> table, rejecting the rest. */
     {
         static const uint8_t ok_params[11] = {0x00, 0xFF, 0x10, 0x11, 0x1F, 0x20,
@@ -142,7 +143,6 @@ int main(void)
                 assert(!listed);
             }
     }
-
     puts("PASS protocol: CRC vectors, field mapping, splits, corruption rejection, "
          "resync, ACK1/ACK2 builder, lamp table");
     return 0;

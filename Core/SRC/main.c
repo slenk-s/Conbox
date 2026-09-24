@@ -84,7 +84,7 @@ int main(void)
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
     BarcodePort_Poll();
-    BarcodeView_Poll();
+    BarcodeView_Poll(); 
 
   }
   /* USER CODE END 3 */

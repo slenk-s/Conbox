@@ -14,9 +14,8 @@
 #include <string.h>
 #define RX_CAPACITY 128u
 #define HOST_TX_CAPACITY 16u
-#define SCANNER_TX_CAPACITY 4u
 typedef struct { uint32_t received_at; uint8_t channel, byte; } RxEvent;
-typedef struct { uint8_t data[HOST_TX_MAX]; uint8_t len; bool startup, cancelled; } TxFrame;
+typedef struct { uint8_t data[HOST_TX_MAX]; uint8_t len; uint8_t port; } TxFrame;
 typedef struct {
     TxFrame *frames;
     uint8_t capacity, head, count;
@@ -26,8 +25,8 @@ typedef struct {
 static RxEvent rx_events[RX_CAPACITY];
 static volatile uint16_t rx_head, rx_tail;
 static uint8_t rx_byte[2];
-static TxFrame host_frames[HOST_TX_CAPACITY], scanner_frames[SCANNER_TX_CAPACITY];
-static TxQueue tx[2];
+static TxFrame host_frames[HOST_TX_CAPACITY];
+static TxQueue host_tx;
 static BarcodeRx scanner;
 static HostParser host;
 static volatile bool fault, reset_parsers;
@@ -65,9 +64,8 @@ void BarcodePort_Init(void)
 {
     uint32_t mask = lock_irq();
     rx_head = rx_tail = 0;
-    memset(tx, 0, sizeof(tx));
-    tx[0].frames = host_frames; tx[0].capacity = HOST_TX_CAPACITY;
-    tx[1].frames = scanner_frames; tx[1].capacity = SCANNER_TX_CAPACITY;
+    memset(&host_tx, 0, sizeof(host_tx));
+    host_tx.frames = host_frames; host_tx.capacity = HOST_TX_CAPACITY;
     fault = reset_parsers = false;
     recover_rx = 0;
     stats.rx_overflow = stats.uart_errors = stats.rearm_errors = stats.tx_errors = 0;
@@ -115,7 +113,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *u)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *u)
 {
     int ch = channel(u);
-    if (ch >= 0) tx[ch].completed = true;
+    if (ch >= 0) host_tx.completed = true;
 }
 bool BarcodePort_HasFault(void) { return fault; }
 void BarcodePort_GetStats(BarcodePortStats *out)
@@ -124,12 +122,12 @@ void BarcodePort_GetStats(BarcodePortStats *out)
     *out = stats;
     unlock_irq(mask);
 }
-static bool enqueue(uint8_t ch, const uint8_t *data, uint8_t len, bool startup)
+static bool enqueue(const uint8_t *data, uint8_t len, uint8_t port)
 {
-    TxQueue *q = &tx[ch];
+    TxQueue *q = &host_tx;
     TxFrame *f;
     uint32_t mask = lock_irq();
-    if (len == 0u || len > (ch == 0u ? HOST_TX_MAX : 3u) || q->failed) {
+    if (len == 0u || len > HOST_TX_MAX || q->failed) {
         fault = true;
         ++stats.tx_errors;
         unlock_irq(mask);
@@ -152,29 +150,18 @@ static bool enqueue(uint8_t ch, const uint8_t *data, uint8_t len, bool startup)
     f = &q->frames[(q->head + q->count) % q->capacity];
     memcpy(f->data, data, len);
     f->len = len;
-    f->startup = startup;
-    f->cancelled = false;
+    f->port = port;
     ++q->count;
     unlock_irq(mask);
     return true;
 }
-bool BarcodePort_SendHost(const uint8_t *data, uint8_t len) { return enqueue(0, data, len, false); }
-bool BarcodePort_SendScanner(const uint8_t *data, uint8_t len) { return enqueue(1, data, len, false); }
-bool BarcodePort_SendStartupRescan(void) { return enqueue(1, BARCODE_RESCAN, 3, true); }
-void BarcodePort_CancelStartupRescans(void)
+bool BarcodePort_SendHost(const uint8_t *data, uint8_t len)
+{ return enqueue(data, len, BARCODE_PORT_HOST); }
+bool BarcodePort_SendRescan(const uint8_t *data, uint8_t len)
+{ return enqueue(data, len, BARCODE_PORT_SCANNER); }
+static void service_tx(void)
 {
-    TxQueue *q = &tx[1];
-    uint8_t i;
-    uint32_t mask = lock_irq();
-    for (i = q->active ? 1u : 0u; i < q->count; ++i) {
-        TxFrame *f = &q->frames[(q->head + i) % q->capacity];
-        if (f->startup) f->cancelled = true;
-    }
-    unlock_irq(mask);
-}
-static void service_tx(uint8_t ch)
-{
-    TxQueue *q = &tx[ch];
+    TxQueue *q = &host_tx;
     uint32_t mask = lock_irq();
     if (q->completed) {
         q->completed = false;
@@ -184,13 +171,9 @@ static void service_tx(uint8_t ch)
             --q->count;
         }
     }
-    while (!q->active && q->count != 0u && q->frames[q->head].cancelled) {
-        q->head = (uint8_t)((q->head + 1u) % q->capacity);
-        --q->count;
-    }
     if (!q->active && !q->failed && q->count != 0u) {
         TxFrame *f = &q->frames[q->head];
-        HAL_StatusTypeDef result = HAL_UART_Transmit_IT(uart(ch), f->data, f->len);
+        HAL_StatusTypeDef result = HAL_UART_Transmit_IT(uart(f->port), f->data, f->len);
         if (result == HAL_OK) q->active = true;
         else if (result != HAL_BUSY) { q->failed = true; fault = true; ++stats.tx_errors; }
     }
@@ -223,7 +206,7 @@ void BarcodePort_Poll(void)
     uint16_t serviced;
     uint32_t mask;
     recover();
-    /* Process incoming barcodes before starting any queued startup rescan. */
+    /* Process incoming barcodes before transmitting queued frames. */
     for (serviced = 0; serviced < RX_CAPACITY; ++serviced) {
         RxEvent e;
         mask = lock_irq();
@@ -250,7 +233,7 @@ void BarcodePort_Poll(void)
     mask = lock_irq();
     if (rx_tail == rx_head && !reset_parsers) BarcodeApp_Tick(HAL_GetTick());
     unlock_irq(mask);
-    service_tx(0); service_tx(1);
+    service_tx();
     if (fault) BarcodeApp_CommunicationFault();
 }
 void BarcodePort_SetRelay(bool active)

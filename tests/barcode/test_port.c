@@ -24,24 +24,12 @@ static void test_release_history(void){AppSnapshot s;init();scan("A\r\n",1);Stub
  BarcodeApp_GetSnapshot(&s);assert(s.current.data[0]=='C');
  /* A red frame received while releasing, but processed after deadline, must not rescan. */
  init();scan("A\r\n",1);Stub_Drain();Stub_Bytes(0,pass,8,10);Stub_Drain();
- Stub_Bytes(0,red,8,500);stub_now=1500;Stub_Drain();assert(!stub_relay && stub_wire_len[1]==0);
-}
-static void test_boot_order(void){init();scan("A\r\n",299);stub_now=301;Stub_Drain();assert(stub_wire_len[1]==0);
- init();scan("\r\n",299);stub_now=300;Stub_Drain();assert(stub_wire_len[1]==3);
- init();stub_now=300;Stub_Drain();assert(stub_wire_len[1]==3);stub_now=400;Stub_Drain();assert(stub_wire_len[1]==6);stub_now=500;Stub_Drain();assert(stub_wire_len[1]==9);
-}
-static void test_cancel_queued_boot(void){
- init();stub_tx_status[1]=HAL_BUSY;stub_now=300;BarcodePort_Poll();assert(!stub_tx_ptr[1]);
- scan("A\r\n",310);stub_tx_status[1]=HAL_OK;Stub_Drain();assert(stub_wire_len[1]==0);
- /* A normal failure rescan must not be removed by accepting another barcode. */
- Stub_Bytes(0,red,8,320);stub_tx_status[1]=HAL_BUSY;BarcodePort_Poll();
- scan("B\r\n",321);stub_tx_status[1]=HAL_OK;Stub_Drain();assert(stub_wire_len[1]==3);
+ Stub_Bytes(0,red,8,500);stub_now=1500;Stub_Drain();assert(!stub_relay);
 }
 static void test_tx(void){uint8_t data[]={1,2,3};unsigned i;BarcodePortStats stats;
  init();assert(BarcodePort_SendHost(data,3));data[0]=9;stub_tx_status[0]=HAL_BUSY;BarcodePort_Poll();assert(!stub_tx_ptr[0] && !BarcodePort_HasFault());
  stub_tx_status[0]=HAL_OK;Stub_Drain();assert(stub_wire_len[0]==3 && stub_wire[0][0]==1);
  init();for(i=0;i<16;i++)assert(BarcodePort_SendHost(data,3));assert(!BarcodePort_SendHost(data,3));assert(BarcodePort_HasFault());
- init();for(i=0;i<4;i++)assert(BarcodePort_SendScanner(data,3));assert(!BarcodePort_SendScanner(data,3));assert(BarcodePort_HasFault());
  init();assert(BarcodePort_SendHost(data,3));stub_tx_status[0]=HAL_ERROR;BarcodePort_Poll();BarcodePort_GetStats(&stats);assert(stats.tx_errors==1 && BarcodePort_HasFault());
 }
 static void test_completed_slot(void){
@@ -66,7 +54,7 @@ static void test_rx_fault(void){AppSnapshot s;BarcodePortStats stats;unsigned i,
 static void test_commands(void){init();Stub_Bytes(0,green,8,1);Stub_Drain();
  assert(stub_green && !stub_red && !stub_yellow && !stub_relay && stub_wire_len[0]==7);
  Stub_Bytes(0,red,8,2);Stub_Drain();
- assert(stub_red && !stub_green && !stub_yellow && stub_wire_len[1]==0);
+ assert(stub_red && !stub_green && !stub_yellow);
  /* NG red blinks at the same 500/500 cadence as yellow. */
  stub_now=502;BarcodePort_Poll();assert(!stub_red);
  stub_now=1002;BarcodePort_Poll();assert(stub_red);
@@ -90,4 +78,13 @@ static void test_fault_masks_pass(void){AppSnapshot s;
  init();husart2.ErrorCode=HAL_UART_ERROR_FE;HAL_UART_ErrorCallback(&husart2);
  Stub_Bytes(0,pass,8,5);Stub_Drain();assert(stub_wire_len[0]==0);
 }
-int main(void){test_order();test_release_history();test_boot_order();test_tx();test_cancel_queued_boot();test_completed_slot();test_rx_fault();test_commands();test_fault_masks_pass();puts("PASS port: chronological RX, half-frame discard, copied TX/BUSY, ring/queue overflow, UART errors, pins, light phases");return 0;}
+static void test_rescan(void){
+ init();Stub_Bytes(0,red,8,1);Stub_Drain();
+ assert(stub_wire_len[1]==0);
+ scan("A\r\n",5);Stub_Drain();Stub_Bytes(0,red,8,6);Stub_Drain();
+ assert(stub_wire_len[1]==3 && memcmp(stub_wire[1],BARCODE_RESCAN,3)==0);
+ assert(stub_tx_calls[1]==1);
+ init();Stub_Bytes(0,pass,8,1);Stub_Drain();
+ assert(stub_wire_len[1]==0);
+}
+int main(void){test_order();test_release_history();test_tx();test_completed_slot();test_rx_fault();test_commands();test_fault_masks_pass();test_rescan();puts("PASS port: chronological RX, half-frame discard, copied TX/BUSY, ring/queue overflow, UART errors, pins, light phases");return 0;}

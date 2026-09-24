@@ -2,7 +2,7 @@
 #define HOST_PROTOCOL_H
 #include <stdint.h>
 #include <stdbool.h>
-#include "barcode_store.h"
+#include "barcode_rx.h"
 /* Wire frame: AA len FA addr cmd [param] CRCH CRCL. The FA byte is the fixed
    box function code, so len counts head through CRC: 7 without a param byte,
    8 with one. CRC16/CCITT-FALSE covers everything except the final two bytes
@@ -13,6 +13,7 @@ enum {
     HOST_CMD_PASS = 0x03u,      /* recognition passed */
     HOST_CMD_LIGHT = 0x06u,     /* <11>-<14>: alarm lamps */
     HOST_CMD_SN = 0x17u,        /* <7>: query box serial number */
+    HOST_CMD_ID = 0x26u,        /* mobile ID query */
     HOST_CMD_VERSION = 0xFFu    /* <1>: query firmware version */
 };
 /* <1> ACK2 payload: the build number as one byte. Bump per release. */
@@ -38,6 +39,7 @@ typedef struct {
 } HostFrame;
 
 extern const uint8_t BARCODE_ACK[7];
+/* Scanner trigger byte sequence, sent to USART2 after a recognition failure. */
 extern const uint8_t BARCODE_RESCAN[3];
 void HostParser_Init(HostParser *p);
 HostFrame HostParser_Feed(HostParser *p, uint8_t byte);

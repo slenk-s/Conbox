@@ -486,11 +486,6 @@
           <GroupName>Application/User/Core</GroupName>
           <Files>
             <File>
-              <FileName>barcode_store.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Core/SRC/barcode_store.c</FilePath>
-            </File>
-            <File>
               <FileName>barcode_rx.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/SRC/barcode_rx.c</FilePath>

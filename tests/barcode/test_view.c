@@ -26,7 +26,7 @@ static void test_refresh_not_abandoned(void){unsigned i;Barcode z={1,{'Z'}};
 }
 int main(void){AppSnapshot s;char lines[6][15];unsigned i,n;Barcode b={21,{0}}; memset(&s,0,sizeof(s));s.view=VIEW_WAIT;s.count=150;s.current.len=21;memcpy(s.current.data,"123456789012345678901",21);
  BarcodeView_Format(&s,lines);assert(strcmp(lines[0],"RECOGNIZING   ")==0);
- assert(strncmp(lines[1],"COUNT:150/150",12)==0 && strcmp(lines[3],"12345678901234")==0 && strcmp(lines[4],"5678901       ")==0);
+ assert(strncmp(lines[1],"PASS:150",8)==0 && strcmp(lines[3],"12345678901234")==0 && strcmp(lines[4],"5678901       ")==0);
  for(i=0;i<6;i++)assert(lines[i][14]==0);
  s.current.data[1]=0;BarcodeView_Format(&s,lines);assert(lines[3][1]=='.' && s.current.data[1]==0);
  s.current.len=1;BarcodeView_Format(&s,lines);assert(lines[3][1]==' ' && lines[4][0]==' ');

@@ -1,15 +1,11 @@
 #include "barcode_app.h"
-#include "barcode_port.h"
 #include <string.h>
 /* LIGHT_NONE is only a sentinel so force_light() cannot hit the same-mode exit. */
 enum { LIGHT_OFF, LIGHT_YELLOW, LIGHT_GREEN, LIGHT_RED, LIGHT_ALL_BLINK, LIGHT_NONE };
-static BarcodeStore store;
 static AppSnapshot app;
 static uint32_t release_started, blink_started;
 static uint8_t light_mode;
 static bool blink_enabled, blink_on;
-static uint32_t boot_started, boot_last;
-static bool boot_cancelled;
 static bool elapsed_at_least(uint32_t now, uint32_t start, uint32_t delay)
 {
     uint32_t elapsed = now - start;
@@ -39,16 +35,10 @@ static void force_light(uint8_t mode, uint32_t at)
     set_light(mode, at);
 }
 static void clear_light(uint32_t at) { force_light(LIGHT_OFF, at); }
-void BarcodeApp_CommunicationFault(void)
-{
-    app.comm_fault = true;
-    BarcodePort_CancelStartupRescans();
-}
+void BarcodeApp_CommunicationFault(void) { app.comm_fault = true; }
 void BarcodeApp_Init(uint32_t t0)
 {
-    boot_started = boot_last = t0;
-    boot_cancelled = false;
-    BarcodeStore_Init(&store);
+    (void)t0;
     memset(&app, 0, sizeof(app));
     release_started = blink_started = 0;
     light_mode = LIGHT_OFF;
@@ -60,12 +50,10 @@ void BarcodeApp_GetSnapshot(AppSnapshot *out) { *out = app; }
 void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now)
 {
     uint8_t wire[23];
-    if (BarcodeApp_IsBusy() || b->len == 0u || b->len > BARCODE_MAX_LEN) return;
-    if (BarcodeStore_Contains(&store, b)) { app.view = VIEW_DUPLICATE; clear_light(now); return; }
+    if (b->len == 0u || b->len > BARCODE_MAX_LEN) return;
+    if (app.state == APP_RELEASING || app.comm_fault) return;
     app.current = *b;
     app.state = APP_WAIT_RESULT;
-    boot_cancelled = true;
-    BarcodePort_CancelStartupRescans();
     app.view = VIEW_WAIT;
     memcpy(wire, b->data, b->len);
     wire[b->len] = 0x0D;
@@ -89,7 +77,15 @@ static void version_reply(void)
     n = HostAck_BuildPayload(f, HOST_ADDR_BOX, HOST_CMD_VERSION, v, 1u);
     if (n == 0u || !BarcodePort_SendHost(f, n)) BarcodeApp_CommunicationFault();
 }
-/* <7>: ACK1 always, ACK2 only while a barcode is still in flight. */
+/* <26>: ID query is also a pure query: ACK1 then a fixed ID payload. */
+static void mobile_id_reply(void)
+{
+    static const uint8_t id[] = {0x05,0xD4,0xFF,0x35,0x31,0x32,0x53,0x43,0x43,0x22,0x51,0x22,0x91};
+    uint8_t f[HOST_TX_MAX], n;
+    if (!send_ack(HOST_ADDR_SN, HOST_ACK_OK)) { BarcodeApp_CommunicationFault(); return; }
+    n = HostAck_BuildPayload(f, HOST_ADDR_SN, HOST_CMD_ID, id, (uint8_t)sizeof(id));
+    if (n == 0u || !BarcodePort_SendHost(f, n)) BarcodeApp_CommunicationFault();
+}
 static void sn_reply(void)
 {
     bool live = app.state != APP_IDLE;
@@ -106,6 +102,7 @@ void BarcodeApp_OnFrame(const HostFrame *fr, uint32_t handled_at)
     int lamp, state;
     if (!fr->ok) return;
     if (fr->addr == HOST_ADDR_SN && fr->cmd == HOST_CMD_SN) { sn_reply(); return; }
+    if (fr->addr == HOST_ADDR_SN && fr->cmd == HOST_CMD_ID) { mobile_id_reply(); return; }
     /* Anything else is addressed to the box itself; other addrs and unknown
        commands are dropped without an ACK. */
     if (fr->addr != HOST_ADDR_BOX) return;
@@ -125,8 +122,7 @@ void BarcodeApp_OnFrame(const HostFrame *fr, uint32_t handled_at)
     }
     if (app.comm_fault || app.state != APP_WAIT_RESULT) return;
     if (fr->cmd == HOST_CMD_PASS) {
-        BarcodeStore_Add(&store, &app.current);
-        app.count = store.count;
+        ++app.count;
         app.state = APP_RELEASING;
         app.view = VIEW_RELEASE;
         release_started = handled_at;
@@ -137,7 +133,8 @@ void BarcodeApp_OnFrame(const HostFrame *fr, uint32_t handled_at)
         app.state = APP_IDLE;
         app.view = VIEW_FAILED;
         force_light(LIGHT_RED, handled_at);
-        if (!BarcodePort_SendScanner(BARCODE_RESCAN, sizeof(BARCODE_RESCAN))) BarcodeApp_CommunicationFault();
+        if (!BarcodePort_SendRescan(BARCODE_RESCAN, (uint8_t)sizeof(BARCODE_RESCAN)))
+            BarcodeApp_CommunicationFault();
     }
 }
 void BarcodeApp_AdvanceTime(uint32_t now)
@@ -152,17 +149,6 @@ void BarcodeApp_AdvanceTime(uint32_t now)
 void BarcodeApp_Tick(uint32_t now)
 {
     BarcodeApp_AdvanceTime(now);
-    if (!boot_cancelled && !app.comm_fault && app.boot_sent < 3u) {
-        uint32_t due = 300u + (uint32_t)app.boot_sent * 100u;
-        if (elapsed_at_least(now, boot_started, due) &&
-            (app.boot_sent == 0u || elapsed_at_least(now, boot_last, 100u))) {
-            if ((uint32_t)(now - boot_started) > due) ++app.boot_late;
-            if (BarcodePort_SendStartupRescan()) {
-                ++app.boot_sent;
-                boot_last = now;
-            } else BarcodeApp_CommunicationFault();
-        }
-    }
     if (blink_enabled && elapsed_at_least(now, blink_started, 0u)) {
         uint32_t periods = (now - blink_started) / 500u;
         /* Rebase each service so a days-long blink survives tick wrap. */

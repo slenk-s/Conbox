@@ -1,11 +1,10 @@
-param([ValidateSet('store','rx','protocol','app','port','view','echo','echo_u1','echo_u2','oled','all')][string]$Suite='all')
+param([ValidateSet('rx','protocol','app','port','view','echo','echo_u1','echo_u2','oled','all')][string]$Suite='all')
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $out=Join-Path $root 'MDK-ARM/build_tmp/barcode'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
-$common=@('Core/SRC/barcode_store.c','Core/SRC/host_protocol.c','Core/SRC/barcode_app.c')
+$common=@('Core/SRC/host_protocol.c','Core/SRC/barcode_app.c')
 $sources=@{
- store=@('Core/SRC/barcode_store.c')
  rx=@('Core/SRC/barcode_rx.c')
  protocol=@('Core/SRC/host_protocol.c')
  app=$common+@('tests/barcode/fake_port.c')
@@ -25,7 +24,7 @@ $defines=@{
 }
 # Suites that reuse another suite's test file.
 $testfile=@{ echo_u1='echo_port'; echo_u2='echo_port' }
-$names=if($Suite -eq 'all'){@('store','rx','protocol','app','port','view','echo','echo_u1','echo_u2','oled')}else{@($Suite)}
+$names=if($Suite -eq 'all'){@('rx','protocol','app','port','view','echo','echo_u1','echo_u2','oled')}else{@($Suite)}
 Push-Location $root
 try {
  foreach($name in $names){

@@ -18,7 +18,7 @@ foreach($ext in @('uvprojx','uvoptx')){
   Check (Test-Path -LiteralPath (Join-Path "$root/MDK-ARM" $node.InnerText) -PathType Leaf) "$ext source exists: $($node.InnerText)"
  }
  if($ext -eq 'uvprojx'){
-  foreach($name in @('barcode_store','barcode_rx','host_protocol','barcode_app','barcode_port','barcode_view')){
+  foreach($name in @('barcode_rx','host_protocol','barcode_app','barcode_port','barcode_view')){
    Check (@($xml.SelectNodes('//FileName')|Where-Object {$_.InnerText -eq "$name.c"}).Count -eq 1) "$name compiled exactly once"
   }
  }

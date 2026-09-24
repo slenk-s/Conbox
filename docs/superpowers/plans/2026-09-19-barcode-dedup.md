@@ -2,6 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 仅在用户明确选择代理并行执行后，才改用 superpowers:subagent-driven-development。
 
+> **⚠ V5 修订（2026-09-24）：Task 1（成功记录 FIFO）与 Task 5（上电三次重扫）已整体废弃，失败重扫也已移除。**
+> 需求设计文档第 15 节（V5 修订）为准。本计划正文保留原样作为历史实施记录，凡涉及防重、FIFO、上电重扫、失败重扫的条目均不再适用。当前代码只保留：原样上传、单条在途锁定、继电器放行、三色灯、OLED、主机命令与 `<26>` 移动盒 ID 查询。
+
 **Goal:** 在保留现有底层初始化的基础上，实现单条码识别、150 条成功 FIFO 防重、继电器放行、三色灯、OLED 与上电主动重扫。
 
 **Architecture:** 使用无 HAL 依赖的条码解析、成功 FIFO、命令解析和业务状态机；HAL 适配负责串口队列、GPIO 与时间。中断只收集带时间戳的字节事件和处理发送完成，主循环按接收顺序处理事件并调度定时任务，OLED 最低优先级分片刷新。
@@ -423,4 +426,30 @@ Get-Content -LiteralPath $log
 
 ## 执行交接
 
-需求已确认，计划已编写，尚未开始实现。建议用户同意后在本会话按 executing-plans 顺序实施，每个任务执行“失败测试→最小实现→测试通过→差异检查”。如用户明确选择子代理方式，再启用相应技能；当前未启动任何子代理。只在用户授权提交时逐任务暂存精确文件并提交，禁止 `git add .` 混入原有工作区修改。
+需求已确认，计划已编写，尚未开始实现。建议用户同意后在本会话按 executing-plans 顺序实施，每个任务执行”失败测试→最小实现→测试通过→差异检查”。如用户明确选择子代理方式，再启用相应技能；当前未启动任何子代理。只在用户授权提交时逐任务暂存精确文件并提交，禁止 `git add .` 混入原有工作区修改。
+
+## V5 执行修订（2026-09-24）
+
+现场决定工位盒只负责原样上传与执行上位机指令，需求设计文档第 15 节据此修订。相应代码改动与已废弃任务如下。
+
+### 废弃任务
+
+- **Task 1（成功记录 FIFO）整体废弃。** `Core/SRC/barcode_store.c`、`Core/INC/barcode_store.h`、`tests/barcode/test_store.c` 已删除；`run.ps1` 的 `store` 套件已移除；`check_project.ps1` 不再要求 `barcode_store.c` 编译一次。
+- **Task 5（上电三次重扫及不可恢复的取消）整体废弃。** `BarcodePort_SendStartupRescan`、`BarcodePort_CancelStartupRescans`、`TxFrame.startup`／`cancelled` 字段、`boot_sent`／`boot_late`／`boot_cancelled`／`boot_started`／`boot_last` 全部删除。
+- **失败重扫移除。** 红灯失败分支不再调用 `BarcodePort_SendScanner(BARCODE_RESCAN, ...)`。
+
+### 保留任务与调整
+
+- Task 2（完整条码接收与忙时整帧丢弃）保留：21 字符上限、`0D 0A` 边界、忙时丢弃不变。
+- Task 3（主机命令精确识别）保留并新增 `<26>` 移动盒 ID 查询；`BARCODE_RESCAN` 常量随失败重扫一并删除。
+- Task 4（业务状态机、继电器与灯光）保留；`count` 语义由”成功记录数”改为”PASS 累计次数”，不再来自 FIFO。
+- Task 6（HAL 适配、事件顺序）保留；扫码枪串口 TX 队列整体删除，`tx[2]` 与 `scanner_frames` 退化为单一 `host_tx`。
+- Task 7（OLED）保留；第 2 行显示 `PASS:nnn` 替代 `COUNT:nnn/150`，`VIEW_DUPLICATE` 状态删除。
+
+### 废弃的验收用例
+
+**整条作废**：T05（重复拦截）、T08（失败后重扫）、T10（FIFO 淘汰）、T14（归一化误判）、T23～T28（上电三次重扫及其取消与失败重扫）。
+
+**仅失效涉及记录或重扫的子句**：T01（去掉"取消剩余上电重扫"）、T02（去掉"不重复上传"）、T06／T07（去掉"发送一次 `16 54 0D`"）、T11（去掉"清空记录"）、T18（去掉"其他成功记录"）、T22（去掉"不触发重扫"）。T21 不受影响。
+
+新增回归项：空闲时重复扫码必须**照常上传**；红灯失败后扫码枪串口无任何输出；上电后 500 ms 内无 `16 54 0D` 发送。
