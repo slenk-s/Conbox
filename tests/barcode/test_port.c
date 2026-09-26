@@ -10,17 +10,17 @@ static const uint8_t green[]={0xAA,8,0xFA,1,6,0x31,0x27,0x15};
 static const uint8_t yellow[]={0xAA,8,0xFA,1,6,0x2F,0xD4,0xEA};
 static void init(void){Stub_Reset();BarcodeApp_Init(0);BarcodePort_Init();}
 static void scan(const char *p,uint32_t at){Stub_Bytes(1,(const uint8_t *)p,(unsigned)strlen(p),at);}
-static void test_order(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();assert(stub_wire_len[0]==3);
+static void test_order(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();assert(stub_wire_len[0]==1);
  scan("B\r\n",2);Stub_Bytes(0,red,8,3);scan("C\r\n",4);stub_now=20;Stub_Drain();
- assert(stub_wire_len[0]==13 && memcmp(stub_wire[0],"A\r\n",3)==0);
- assert(memcmp(stub_wire[0]+3,BARCODE_ACK,7)==0 && memcmp(stub_wire[0]+10,"C\r\n",3)==0);
+ assert(stub_wire_len[0]==9 && memcmp(stub_wire[0],"A",1)==0);
+ assert(memcmp(stub_wire[0]+1,BARCODE_ACK,7)==0 && memcmp(stub_wire[0]+8,"C",1)==0);
  assert(stub_wire_len[1]==3);BarcodeApp_GetSnapshot(&s);assert(s.current.data[0]=='C' && s.state==APP_WAIT_RESULT);
 }
 static void test_release_history(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();
  Stub_Bytes(0,pass,8,10);scan("B\r\n",15);stub_now=20;Stub_Drain();assert(stub_relay);
  stub_now=1019;BarcodePort_Poll();assert(stub_relay);scan("part",1019);stub_now=1020;BarcodePort_Poll();assert(!stub_relay);
- scan("tail\r\n",1021);Stub_Drain();assert(stub_wire_len[0]==10);
- scan("C\r\n",1022);Stub_Drain();assert(stub_wire_len[0]==13);
+ scan("tail\r\n",1021);Stub_Drain();assert(stub_wire_len[0]==8);
+ scan("C\r\n",1022);Stub_Drain();assert(stub_wire_len[0]==9);
  BarcodeApp_GetSnapshot(&s);assert(s.current.data[0]=='C');
  /* A red frame received while releasing, but processed after deadline, must not rescan. */
  init();scan("A\r\n",1);Stub_Drain();Stub_Bytes(0,pass,8,10);Stub_Drain();
