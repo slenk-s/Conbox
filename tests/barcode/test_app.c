@@ -168,7 +168,7 @@ static void test_flow(void){
  unsigned host;Barcode d={3,{'D','d','1'}};Barcode e={3,{'E','e','2'}};
  start();assert(!fake_relay && fake_light_changes==0);assert_off();
  BarcodeApp_OnBarcode(&a,1);snapshot();assert(s.state==APP_WAIT_RESULT);
- assert(fake_host_count==1 && fake_host[0].len==3 && memcmp(fake_host[0].data,"A b",3)==0);
+ assert(fake_host_count==1 && fake_host[0].len==4 && memcmp(fake_host[0].data,"A b\r",4)==0);
  assert(fake_yellow&&!fake_green&&!fake_red);
  BarcodeApp_OnBarcode(&a,2);BarcodeApp_OnBarcode(&b,3);assert(fake_host_count==3 && fake_yellow);
  send_cmd(T_GREEN,4);check_ack(3);snapshot();assert(s.state==APP_WAIT_RESULT && s.count==0 && !fake_relay);

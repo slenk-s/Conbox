@@ -49,12 +49,17 @@ bool BarcodeApp_IsBusy(void) { return app.state != APP_IDLE || app.comm_fault; }
 void BarcodeApp_GetSnapshot(AppSnapshot *out) { *out = app; }
 void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now)
 {
+    uint8_t wire[BARCODE_MAX_LEN + 1u];
+    bool has_cr;
     if (b->len == 0u || b->len > BARCODE_MAX_LEN) return;
     if (app.state == APP_RELEASING || app.comm_fault) return;
+    has_cr = (b->data[b->len - 1u] == 0x0Du);
     app.current = *b;
     app.state = APP_WAIT_RESULT;
     app.view = VIEW_WAIT;
-    if (!BarcodePort_SendHost(b->data, b->len)) BarcodeApp_CommunicationFault();
+    memcpy(wire, b->data, b->len);
+    if (!has_cr) wire[b->len] = 0x0D;
+    if (!BarcodePort_SendHost(wire, (uint8_t)(b->len + (has_cr ? 0u : 1u)))) BarcodeApp_CommunicationFault();
     force_light(LIGHT_YELLOW, now);
 }
 static bool send_ack(uint8_t addr, uint8_t status)
