@@ -1,6 +1,6 @@
 #include "barcode_app.h"
 #include <string.h>
-/* LIGHT_NONE is a sentinel so force_light() always reasserts after the mode. */
+/* LIGHT_NONE 作哨兵，让 force_light() 每次都能重设灯状态。 */
 enum { LIGHT_OFF, LIGHT_YELLOW, LIGHT_GREEN, LIGHT_RED, LIGHT_ALL_BLINK, LIGHT_NONE };
 static AppSnapshot app;
 static BarcodeStore store;
@@ -66,9 +66,6 @@ void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now)
     if (b->len == 0u || b->len > BARCODE_MAX_LEN) return;
     if (app.comm_fault || app.state == APP_RELEASING) return;
     if (app.state == APP_WAIT_RESULT) {
-        /* A scan is already uploaded and awaiting the host's verdict; a
-           second scan would overwrite `current` and the host would
-           PASS/RED_FAIL the wrong barcode. Drop it, count it. */
         app.rejected_count++;
         return;
     }
@@ -93,8 +90,7 @@ void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now)
         wire[len++] = 0x0Au;
     }
     if (BarcodePort_SendHost(wire, len)) {
-        /* Clock only starts on a successful enqueue; a failed send leaves
-           upload_started == 0 so the timeout guard stays off. */
+        /* 仅在入队成功后启动超时计时。 */
         upload_started = now;
     } else {
         BarcodeApp_CommunicationFault();
@@ -188,9 +184,7 @@ void BarcodeApp_AdvanceTime(uint32_t now)
     }
     if (!app.comm_fault && app.state == APP_WAIT_RESULT && upload_started != 0u &&
         elapsed_at_least(now, upload_started, WAIT_TIMEOUT_MS)) {
-        /* The host never replied. Treat as an NG: red lamp, count it, and
-           immediately kick the scanner to retry. upload_started is reset so
-           a subsequent scan in this same FAILED state doesn't re-fire. */
+        /* 上位机 30s 未应答：判 NG + 立即重扫。 */
         app.state = APP_FAILED;
         app.view = VIEW_FAILED;
         app.ng_count++;

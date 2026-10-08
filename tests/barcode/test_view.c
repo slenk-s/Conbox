@@ -14,10 +14,7 @@ static void send_pass(uint32_t t)
     HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_PASS, 0, false };
     BarcodeApp_OnFrame(&f, t);
 }
-/* Two-column layout:
-     row 1: P:xxx   N:xxx
-     row 2: R:xxx   C:xxx
-   P/N on row 1 at cols 0 and 7; R/C on row 2 at cols 0 and 7. */
+/* 两列布局：第 1 行 P / N，第 2 行 R / C。 */
 static void test_layout(void)
 {
     AppSnapshot s;
@@ -36,7 +33,7 @@ static void test_layout(void)
     assert(!strcmp(lines[5], "              "));
     for (i = 0; i < 6u; ++i) assert(lines[i][14] == '\0');
 
-    /* WAIT + counts + a 21-byte barcode split 11 on row 4, 10 on row 5. */
+    /* WAIT + 计数 + 21 字节条码：第 4 行 11 字、第 5 行 10 字。 */
     memset(&s, 0, sizeof(s));
     s.view = VIEW_WAIT;
     s.pass_count = 150; s.ng_count = 3; s.buffer_count = 42; s.rejected_count = 7;
@@ -49,13 +46,13 @@ static void test_layout(void)
     assert(!strcmp(lines[4], "BC:12345678901"));
     assert(!strcmp(lines[5], "2345678901    "));
 
-    /* Non-printable byte maps to '.'. */
+    /* 非可打印字节显示为 '.'。 */
     s.current.data[1] = 0;
     BarcodeView_Format(&s, lines);
     assert(lines[4][4] == '.');
     assert(s.current.data[1] == 0);
 
-    /* SHORT barcode: row 5 stays blank. */
+    /* 短条码：第 5 行留空。 */
     s.current.len = 1;
     s.current.data[0] = 'Z';
     BarcodeView_Format(&s, lines);
@@ -63,25 +60,24 @@ static void test_layout(void)
     assert(lines[4][4] == ' ');
     assert(lines[5][0] == ' ');
 
-    /* FAILED view. */
+    /* FAILED 视图。 */
     s.view = VIEW_FAILED;
     s.current.len = 0;
     BarcodeView_Format(&s, lines);
     assert(strcmp(lines[0], "FAILED        ") == 0);
 
-    /* DUPLICATE view. */
+    /* DUPLICATE 视图。 */
     s.view = VIEW_DUPLICATE;
     BarcodeView_Format(&s, lines);
     assert(strcmp(lines[0], "DUPLICATE     ") == 0);
 
-    /* Comm fault adds "ERR" tag after the state label. */
+    /* 通信故障：状态标签后加 ERR。 */
     s.view = VIEW_IDLE;
     s.comm_fault = true;
     BarcodeView_Format(&s, lines);
     assert(strncmp(lines[0], "IDLE ERR", 8u) == 0);
 }
-/* Change detection: a change to any of the four count/view/comm-fault/current
-   fields triggers a redraw; no change leaves the panel untouched. */
+/* 变更检测：任何字段变化触发重绘，无变化时保持面板不动。 */
 static void test_change_detection(void)
 {
     unsigned i, n;
@@ -104,22 +100,21 @@ static void test_change_detection(void)
     assert(stub_screen[4][4] == 'B');
     assert(stub_screen[4][5] == 'C');
 
-    /* A PASS increments P and C together. */
+    /* PASS 时 P 和 C 同时递增。 */
     send_pass(20);
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(!strncmp(stub_screen[1], "P:001", 5));
     assert(!strncmp(stub_screen[2] + 7, "C:001", 5));
     assert(!strncmp(stub_screen[0], "RELEASING", 9));
 
-    /* Red-fail in WAIT_RESULT increments N (this test is at RELEASING now,
-       so it is inert — advance past release first). */
+    /* 先推进过释放周期，再走 WAIT_RESULT。 */
     {
         unsigned t;
         for (t = 0; t < 2200u; t += 100u) BarcodeApp_Tick(t);
     }
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(!strncmp(stub_screen[0], "IDLE", 4));
-    /* Push a fresh barcode into WAIT_RESULT before the RED_FAIL test. */
+    /* 再推一条条码进入 WAIT_RESULT。 */
     {
         Barcode d = {3, {'D', 'e', '1'}};
         BarcodeApp_OnBarcode(&d, 3000);
@@ -128,11 +123,10 @@ static void test_change_detection(void)
     send_red(3100);
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(!strncmp(stub_screen[0], "FAILED", 6));
-    /* N is at col 7 on row 1 (was row 2 before the layout change). */
+    /* N 在第 1 行 col 7。 */
     assert(!strncmp(stub_screen[1] + 7, "N:001", 5));
 }
-/* R count is bumped when a second scan arrives while the first is still in
-   WAIT_RESULT, and the change triggers a redraw. */
+/* 首条仍在 WAIT_RESULT 时收到第二次扫描，R 递增并触发重绘。 */
 static void test_rejected_count_redraw(void)
 {
     unsigned i;
@@ -146,14 +140,14 @@ static void test_rejected_count_redraw(void)
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(!strncmp(stub_screen[2], "R:000", 5));
     unsigned n = stub_draw_count;
-    BarcodeApp_OnBarcode(&b2, 20); /* rejected: still WAIT_RESULT on b1 */
+    BarcodeApp_OnBarcode(&b2, 20); /* 被拒：b1 仍在 WAIT_RESULT */
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(stub_draw_count > n);
     assert(!strncmp(stub_screen[2], "R:001", 5));
-    /* The in-flight barcode stays 'A' — the rejected scan didn't replace it. */
+    /* 被拒扫描不覆盖当前条码。 */
     assert(stub_screen[4][3] == 'A');
 }
-/* Mid-refresh snapshot change must not abandon the refresh. */
+/* 刷新中途快照变化不得中断刷新。 */
 static void test_refresh_not_abandoned(void)
 {
     unsigned i;

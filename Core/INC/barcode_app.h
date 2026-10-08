@@ -9,9 +9,8 @@ enum { VIEW_IDLE, VIEW_WAIT, VIEW_RELEASE, VIEW_FAILED, VIEW_DUPLICATE };
 #define GREEN_MS 2000u
 #define RESCAN_MS 3000u
 #define WAIT_TIMEOUT_MS 30000u
-/* pass_count = PASSes. ng_count = red-fail events + WAIT_RESULT timeouts.
-   buffer_count = current FIFO length. rejected_count = scans silently dropped
-   because a scan was already in flight in APP_WAIT_RESULT. */
+/* pass_count=PASS 次数; ng_count=红失败+等待超时; buffer_count=FIFO 长度;
+   rejected_count=WAIT_RESULT 中被拒的扫描。 */
 typedef struct {
     int state, view;
     Barcode current;

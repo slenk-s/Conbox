@@ -73,10 +73,6 @@ void BarcodeView_Init(void)
 void BarcodeView_Format(const AppSnapshot *s, char lines[6][15])
 {
     static const char *const labels[] = {"IDLE", "RECOGNIZING", "RELEASING", "FAILED", "DUPLICATE"};
-    /* Layout per user spec:
-         row 1: P:xxx  N:xxx
-         row 2: R:xxx  C:xxx
-       P/N at col 0 and col 7 on row 1; R/C at col 0 and col 7 on row 2. */
     static const char pref[4] = {'P', 'N', 'R', 'C'};
     static const uint8_t row_of[4] = {1u, 1u, 2u, 2u};
     static const uint8_t col_of[4] = {0u, 7u, 0u, 7u};

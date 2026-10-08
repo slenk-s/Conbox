@@ -104,9 +104,7 @@ static void test_dedup_idle_only(void)
     snapshot();
     assert(s.state == APP_WAIT_RESULT);
     assert(fake_yellow);
-    /* In WAIT_RESULT, a second scan is silently dropped and counted as
-       rejected — the in-flight 'current' must not be overwritten so the
-       host's PASS/RED_FAIL applies to the right barcode. */
+    /* WAIT_RESULT 中新扫描静默丢弃，当前条码不变。 */
     host = fake_host_count;
     BarcodeApp_OnBarcode(&a, 4200);
     assert(fake_host_count == host);
@@ -330,10 +328,7 @@ static void test_rescan_independent_of_release(void)
     assert(s.state == APP_FAILED); /* No auto-return. */
 }
 
-/* During APP_WAIT_RESULT a second scan is silently dropped and counted in
-   `rejected_count` — no overwrite of `current`, no extra upload, no state
-   change, no light flicker. `upload_started` keeps ticking so a stray scan
-   can't reset the host timeout. */
+/* WAIT_RESULT 中新扫描静默丢弃，仅计入 rejected_count。 */
 static void test_wait_result_rejects_scans(void)
 {
     unsigned host, lights;
@@ -353,29 +348,25 @@ static void test_wait_result_rejects_scans(void)
     assert(s.current.data[0] == 'A');
     assert(s.rejected_count == 1u);
 
-    /* A third scan also rejected, still on the same in-flight barcode. */
+    /* 第三次扫描同样被拒，仍为原 in-flight 条码。 */
     host = fake_host_count;
     BarcodeApp_OnBarcode(&a, 300);
     assert(fake_host_count == host);
     snapshot();
     assert(s.current.data[0] == 'A');
     assert(s.rejected_count == 2u);
-    /* The rejected scan must NOT have reset the timeout clock: after 30s
-       from the original upload (t=100) the host-failure fires, not after
-       the last rejected scan. */
+    /* 超时计时不被拒扫描重置：30s 后仍触发。 */
     BarcodeApp_Tick(WAIT_TIMEOUT_MS + 100u);
     snapshot();
     assert(s.state == APP_FAILED && s.ng_count == 1u);
 }
 
-/* 30s after a successful upload with no host reply: state → FAILED, ng,
-   red lamp, and an immediate rescan command on the scanner port. */
+/* 上传成功 30s 无应答：转 FAILED，红灯并立即重扫。 */
 static void test_wait_result_timeout(void)
 {
     start();
     BarcodeApp_OnBarcode(&a, 1000);
     assert(fake_scanner_count == 0u);
-    /* 30s elapsed: transition fires exactly at WAIT_TIMEOUT_MS after upload. */
     BarcodeApp_Tick(1000u + WAIT_TIMEOUT_MS);
     snapshot();
     assert(s.state == APP_FAILED && s.view == VIEW_FAILED);
@@ -383,15 +374,13 @@ static void test_wait_result_timeout(void)
     assert(fake_red);
     assert(fake_scanner_count == 1u);
     assert(memcmp(fake_scanner[0].data, BARCODE_RESCAN, 3u) == 0);
-    /* The rescan is not re-fired by later ticks. */
     BarcodeApp_Tick(20000u);
     assert(fake_scanner_count == 1u);
     snapshot();
     assert(s.ng_count == 1u);
 }
 
-/* The timeout clock starts at upload time, not at the scan instant. If the
-   upload itself fails, the clock never starts and the timeout cannot fire. */
+/* 上传失败时不启动超时计时。 */
 static void test_wait_timeout_not_armed_on_failed_send(void)
 {
     start();
@@ -399,7 +388,6 @@ static void test_wait_timeout_not_armed_on_failed_send(void)
     BarcodeApp_OnBarcode(&a, 5);
     snapshot();
     assert(s.comm_fault);
-    /* Tick far past the timeout — comm_fault still blocks the transition. */
     BarcodeApp_Tick(100000u);
     snapshot();
     assert(s.state == APP_WAIT_RESULT);
@@ -407,9 +395,7 @@ static void test_wait_timeout_not_armed_on_failed_send(void)
     assert(fake_scanner_count == 0u);
 }
 
-/* A PASS that arrives just before the timeout still wins — the timeout
-   guard is only evaluated while state is WAIT_RESULT, so once PASS flips
-   the state to RELEASING it can never fire. */
+/* PASS 抢跑超时：状态已转 RELEASING 时超时守卫不再触发。 */
 static void test_wait_timeout_lost_race_to_pass(void)
 {
     start();
@@ -417,8 +403,6 @@ static void test_wait_timeout_lost_race_to_pass(void)
     send_cmd(T_PASS, WAIT_TIMEOUT_MS - 1u);
     snapshot();
     assert(s.state == APP_RELEASING && s.pass_count == 1u);
-    /* Late Tick past the timeout: the release timer finishes (state → IDLE),
-       but no rescan and no extra NG is recorded. */
     BarcodeApp_Tick(WAIT_TIMEOUT_MS + 5000u);
     snapshot();
     assert(s.state == APP_IDLE);

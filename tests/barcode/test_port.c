@@ -12,9 +12,7 @@ static void init(void){Stub_Reset();BarcodeApp_Init(0);BarcodePort_Init();}
 static void scan(const char *p,uint32_t at){Stub_Bytes(1,(const uint8_t *)p,(unsigned)strlen(p),at);}
 static void test_order(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();assert(stub_wire_len[0]==3);
  scan("B\r\n",2);Stub_Bytes(0,red,8,3);scan("C\r\n",4);stub_now=20;Stub_Drain();
- /* B is silently rejected because A was already in WAIT_RESULT; the red-fail
-    command flips state to FAILED, then C is accepted and becomes the new
-    in-flight barcode. Wire is: A, ACK_red, C. */
+ /* B 被拒（A 仍在 WAIT_RESULT）；红失败转 FAILED，C 成为新的在传条码。线序：A, ACK_red, C。 */
  assert(stub_wire_len[0]==13);
  assert(memcmp(stub_wire[0],"A\r\n",3)==0);
  assert(memcmp(stub_wire[0]+3,BARCODE_ACK,7)==0);
