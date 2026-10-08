@@ -8,11 +8,14 @@ enum { VIEW_IDLE, VIEW_WAIT, VIEW_RELEASE, VIEW_FAILED, VIEW_DUPLICATE };
 #define RELAY_MS 200u
 #define GREEN_MS 2000u
 #define RESCAN_MS 3000u
-/* pass_count = PASSes. ng_count = red-fail events. buffer_count = current FIFO length. */
+#define WAIT_TIMEOUT_MS 30000u
+/* pass_count = PASSes. ng_count = red-fail events + WAIT_RESULT timeouts.
+   buffer_count = current FIFO length. rejected_count = scans silently dropped
+   because a scan was already in flight in APP_WAIT_RESULT. */
 typedef struct {
     int state, view;
     Barcode current;
-    uint16_t pass_count, ng_count, buffer_count;
+    uint16_t pass_count, ng_count, buffer_count, rejected_count;
     bool comm_fault;
 } AppSnapshot;
 void BarcodeApp_Init(uint32_t t0);

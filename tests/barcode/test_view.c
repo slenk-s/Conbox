@@ -14,7 +14,10 @@ static void send_pass(uint32_t t)
     HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_PASS, 0, false };
     BarcodeApp_OnFrame(&f, t);
 }
-/* The six-row layout: [state] / P:n / N:n / C:n / BARCODE / <bytes>. */
+/* Two-column layout:
+     row 1: P:xxx   N:xxx
+     row 2: R:xxx   C:xxx
+   P/N on row 1 at cols 0 and 7; R/C on row 2 at cols 0 and 7. */
 static void test_layout(void)
 {
     AppSnapshot s;
@@ -22,30 +25,29 @@ static void test_layout(void)
     unsigned i;
     memset(&s, 0, sizeof(s));
     s.view = VIEW_IDLE;
-    s.pass_count = 0; s.ng_count = 0; s.buffer_count = 0;
+    s.pass_count = 0; s.ng_count = 0; s.buffer_count = 0; s.rejected_count = 0;
     s.current.len = 0;
     BarcodeView_Format(&s, lines);
     assert(strcmp(lines[0], "IDLE          ") == 0);
-    assert(strcmp(lines[1], "P:000         ") == 0);
-    assert(strcmp(lines[2], "N:000         ") == 0);
-    assert(strcmp(lines[3], "C:000         ") == 0);
-    assert(strcmp(lines[4], "BC:           ") == 0);
-    assert(strcmp(lines[5], "              ") == 0);
+    assert(!strcmp(lines[1], "P:000  N:000  "));
+    assert(!strcmp(lines[2], "R:000  C:000  "));
+    assert(!strcmp(lines[3], "              "));
+    assert(!strcmp(lines[4], "BC:           "));
+    assert(!strcmp(lines[5], "              "));
     for (i = 0; i < 6u; ++i) assert(lines[i][14] == '\0');
 
     /* WAIT + counts + a 21-byte barcode split 11 on row 4, 10 on row 5. */
     memset(&s, 0, sizeof(s));
     s.view = VIEW_WAIT;
-    s.pass_count = 150; s.ng_count = 3; s.buffer_count = 42;
+    s.pass_count = 150; s.ng_count = 3; s.buffer_count = 42; s.rejected_count = 7;
     s.current.len = 21;
     memcpy(s.current.data, "123456789012345678901", 21u);
     BarcodeView_Format(&s, lines);
     assert(strcmp(lines[0], "RECOGNIZING   ") == 0);
-    assert(strcmp(lines[1], "P:150         ") == 0);
-    assert(strcmp(lines[2], "N:003         ") == 0);
-    assert(strcmp(lines[3], "C:042         ") == 0);
-    assert(strcmp(lines[4], "BC:12345678901") == 0);
-    assert(strcmp(lines[5], "2345678901    ") == 0);
+    assert(!strcmp(lines[1], "P:150  N:003  "));
+    assert(!strcmp(lines[2], "R:007  C:042  "));
+    assert(!strcmp(lines[4], "BC:12345678901"));
+    assert(!strcmp(lines[5], "2345678901    "));
 
     /* Non-printable byte maps to '.'. */
     s.current.data[1] = 0;
@@ -97,8 +99,7 @@ static void test_change_detection(void)
     assert(stub_draw_count > n);
     assert(!strncmp(stub_screen[0], "RECOGNIZING", 11));
     assert(!strncmp(stub_screen[1], "P:000", 5));
-    assert(!strncmp(stub_screen[2], "N:000", 5));
-    assert(!strncmp(stub_screen[3], "C:000", 5));
+    assert(stub_screen[2][0] == 'R');
     assert(stub_screen[4][3] == 'A');
     assert(stub_screen[4][4] == 'B');
     assert(stub_screen[4][5] == 'C');
@@ -107,7 +108,7 @@ static void test_change_detection(void)
     send_pass(20);
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(!strncmp(stub_screen[1], "P:001", 5));
-    assert(!strncmp(stub_screen[3], "C:001", 5));
+    assert(!strncmp(stub_screen[2] + 7, "C:001", 5));
     assert(!strncmp(stub_screen[0], "RELEASING", 9));
 
     /* Red-fail in WAIT_RESULT increments N (this test is at RELEASING now,
@@ -127,7 +128,30 @@ static void test_change_detection(void)
     send_red(3100);
     for (i = 0; i < 300u; ++i) BarcodeView_Poll();
     assert(!strncmp(stub_screen[0], "FAILED", 6));
-    assert(!strncmp(stub_screen[2], "N:001", 5));
+    /* N is at col 7 on row 1 (was row 2 before the layout change). */
+    assert(!strncmp(stub_screen[1] + 7, "N:001", 5));
+}
+/* R count is bumped when a second scan arrives while the first is still in
+   WAIT_RESULT, and the change triggers a redraw. */
+static void test_rejected_count_redraw(void)
+{
+    unsigned i;
+    Barcode b1 = {3, {'A', 'B', 'C'}};
+    Barcode b2 = {3, {'X', 'Y', 'Z'}};
+    FakePort_Reset();
+    OledStub_Reset();
+    BarcodeApp_Init(0);
+    BarcodeView_Init();
+    BarcodeApp_OnBarcode(&b1, 10);
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[2], "R:000", 5));
+    unsigned n = stub_draw_count;
+    BarcodeApp_OnBarcode(&b2, 20); /* rejected: still WAIT_RESULT on b1 */
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(stub_draw_count > n);
+    assert(!strncmp(stub_screen[2], "R:001", 5));
+    /* The in-flight barcode stays 'A' — the rejected scan didn't replace it. */
+    assert(stub_screen[4][3] == 'A');
 }
 /* Mid-refresh snapshot change must not abandon the refresh. */
 static void test_refresh_not_abandoned(void)
@@ -154,8 +178,9 @@ int main(void)
 {
     test_layout();
     test_change_detection();
+    test_rejected_count_redraw();
     test_refresh_not_abandoned();
-    puts("PASS view: 6-row layout with P/N/C counts, state labels, nonprintable, "
-         "incremental render, superseded view");
+    puts("PASS view: P/N on row1 + R/C on row2 layout, state labels, "
+         "nonprintable, incremental render, superseded view");
     return 0;
 }

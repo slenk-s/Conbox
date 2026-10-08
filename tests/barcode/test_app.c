@@ -104,13 +104,15 @@ static void test_dedup_idle_only(void)
     snapshot();
     assert(s.state == APP_WAIT_RESULT);
     assert(fake_yellow);
-    /* In WAIT_RESULT, dedup is skipped: repeating 'a' overwrites current. */
+    /* In WAIT_RESULT, a second scan is silently dropped and counted as
+       rejected — the in-flight 'current' must not be overwritten so the
+       host's PASS/RED_FAIL applies to the right barcode. */
     host = fake_host_count;
     BarcodeApp_OnBarcode(&a, 4200);
-    assert(fake_host_count == host + 1u);
-    assert(fake_host[host].data[0] == 'A');
+    assert(fake_host_count == host);
     snapshot();
-    assert(s.state == APP_WAIT_RESULT && s.current.data[0] == 'A');
+    assert(s.state == APP_WAIT_RESULT && s.current.data[0] == 'B');
+    assert(s.rejected_count == 1u);
 }
 
 /* Store only fills on PASS. Duplicates at IDLE never write. Rejected scans
@@ -328,6 +330,101 @@ static void test_rescan_independent_of_release(void)
     assert(s.state == APP_FAILED); /* No auto-return. */
 }
 
+/* During APP_WAIT_RESULT a second scan is silently dropped and counted in
+   `rejected_count` — no overwrite of `current`, no extra upload, no state
+   change, no light flicker. `upload_started` keeps ticking so a stray scan
+   can't reset the host timeout. */
+static void test_wait_result_rejects_scans(void)
+{
+    unsigned host, lights;
+    start();
+    BarcodeApp_OnBarcode(&a, 100);
+    snapshot();
+    assert(s.state == APP_WAIT_RESULT && s.current.data[0] == 'A');
+    assert(s.rejected_count == 0u);
+
+    host = fake_host_count;
+    lights = fake_light_changes;
+    BarcodeApp_OnBarcode(&b, 200);
+    assert(fake_host_count == host);
+    assert(fake_light_changes == lights);
+    snapshot();
+    assert(s.state == APP_WAIT_RESULT);
+    assert(s.current.data[0] == 'A');
+    assert(s.rejected_count == 1u);
+
+    /* A third scan also rejected, still on the same in-flight barcode. */
+    host = fake_host_count;
+    BarcodeApp_OnBarcode(&a, 300);
+    assert(fake_host_count == host);
+    snapshot();
+    assert(s.current.data[0] == 'A');
+    assert(s.rejected_count == 2u);
+    /* The rejected scan must NOT have reset the timeout clock: after 30s
+       from the original upload (t=100) the host-failure fires, not after
+       the last rejected scan. */
+    BarcodeApp_Tick(WAIT_TIMEOUT_MS + 100u);
+    snapshot();
+    assert(s.state == APP_FAILED && s.ng_count == 1u);
+}
+
+/* 30s after a successful upload with no host reply: state → FAILED, ng,
+   red lamp, and an immediate rescan command on the scanner port. */
+static void test_wait_result_timeout(void)
+{
+    start();
+    BarcodeApp_OnBarcode(&a, 1000);
+    assert(fake_scanner_count == 0u);
+    /* 30s elapsed: transition fires exactly at WAIT_TIMEOUT_MS after upload. */
+    BarcodeApp_Tick(1000u + WAIT_TIMEOUT_MS);
+    snapshot();
+    assert(s.state == APP_FAILED && s.view == VIEW_FAILED);
+    assert(s.ng_count == 1u);
+    assert(fake_red);
+    assert(fake_scanner_count == 1u);
+    assert(memcmp(fake_scanner[0].data, BARCODE_RESCAN, 3u) == 0);
+    /* The rescan is not re-fired by later ticks. */
+    BarcodeApp_Tick(20000u);
+    assert(fake_scanner_count == 1u);
+    snapshot();
+    assert(s.ng_count == 1u);
+}
+
+/* The timeout clock starts at upload time, not at the scan instant. If the
+   upload itself fails, the clock never starts and the timeout cannot fire. */
+static void test_wait_timeout_not_armed_on_failed_send(void)
+{
+    start();
+    fake_send_ok = false;
+    BarcodeApp_OnBarcode(&a, 5);
+    snapshot();
+    assert(s.comm_fault);
+    /* Tick far past the timeout — comm_fault still blocks the transition. */
+    BarcodeApp_Tick(100000u);
+    snapshot();
+    assert(s.state == APP_WAIT_RESULT);
+    assert(s.ng_count == 0u);
+    assert(fake_scanner_count == 0u);
+}
+
+/* A PASS that arrives just before the timeout still wins — the timeout
+   guard is only evaluated while state is WAIT_RESULT, so once PASS flips
+   the state to RELEASING it can never fire. */
+static void test_wait_timeout_lost_race_to_pass(void)
+{
+    start();
+    BarcodeApp_OnBarcode(&a, 1);
+    send_cmd(T_PASS, WAIT_TIMEOUT_MS - 1u);
+    snapshot();
+    assert(s.state == APP_RELEASING && s.pass_count == 1u);
+    /* Late Tick past the timeout: the release timer finishes (state → IDLE),
+       but no rescan and no extra NG is recorded. */
+    BarcodeApp_Tick(WAIT_TIMEOUT_MS + 5000u);
+    snapshot();
+    assert(s.state == APP_IDLE);
+    assert(s.ng_count == 0u);
+    assert(fake_scanner_count == 0u);
+}
 /* The comm-fault latch blocks uploads and PASS but not queries/ACKs. SN
    query still returns the barcode if it is in flight (state is WAIT_RESULT
    from the failed upload), so the payload ACK goes out. */
@@ -448,11 +545,16 @@ int main(void)
     test_releasing_masks_scans();
     test_pass_timing();
     test_rescan_independent_of_release();
+    test_wait_result_rejects_scans();
+    test_wait_result_timeout();
+    test_wait_timeout_not_armed_on_failed_send();
+    test_wait_timeout_lost_race_to_pass();
     test_comm_fault();
     test_manual_lamps_survive();
     test_sn_query();
     puts("PASS app: crlf matrix, idle dedup, store gate/wrap, red-fail gating, "
          "one-rescan-per-ng, late-pass inert, releasing masks scans, pass timing, "
-         "rescan vs release, comm fault, manual lamps, sn query");
+         "rescan vs release, wait-rejects, wait-timeout, timeout-not-armed-on-fail, "
+         "timeout-lost-to-pass, comm fault, manual lamps, sn query");
     return 0;
 }

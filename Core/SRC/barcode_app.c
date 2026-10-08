@@ -4,7 +4,7 @@
 enum { LIGHT_OFF, LIGHT_YELLOW, LIGHT_GREEN, LIGHT_RED, LIGHT_ALL_BLINK, LIGHT_NONE };
 static AppSnapshot app;
 static BarcodeStore store;
-static uint32_t release_started, blink_started, rescan_started;
+static uint32_t release_started, blink_started, rescan_started, upload_started;
 static uint8_t light_mode;
 static bool blink_enabled, blink_on, rescan_pending;
 static bool elapsed_at_least(uint32_t now, uint32_t start, uint32_t delay)
@@ -44,7 +44,7 @@ void BarcodeApp_Init(uint32_t t0)
     app.state = APP_IDLE;
     app.view = VIEW_IDLE;
     BarcodeStore_Init(&store);
-    release_started = blink_started = rescan_started = 0;
+    release_started = blink_started = rescan_started = upload_started = 0;
     light_mode = LIGHT_OFF;
     blink_enabled = blink_on = false;
     rescan_pending = false;
@@ -65,6 +65,13 @@ void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now)
     uint8_t len;
     if (b->len == 0u || b->len > BARCODE_MAX_LEN) return;
     if (app.comm_fault || app.state == APP_RELEASING) return;
+    if (app.state == APP_WAIT_RESULT) {
+        /* A scan is already uploaded and awaiting the host's verdict; a
+           second scan would overwrite `current` and the host would
+           PASS/RED_FAIL the wrong barcode. Drop it, count it. */
+        app.rejected_count++;
+        return;
+    }
     if (app.state == APP_IDLE && BarcodeStore_Contains(&store, b)) {
         app.current = *b;
         app.state = APP_DUPLICATE;
@@ -85,7 +92,13 @@ void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now)
         wire[len++] = 0x0Du;
         wire[len++] = 0x0Au;
     }
-    if (!BarcodePort_SendHost(wire, len)) BarcodeApp_CommunicationFault();
+    if (BarcodePort_SendHost(wire, len)) {
+        /* Clock only starts on a successful enqueue; a failed send leaves
+           upload_started == 0 so the timeout guard stays off. */
+        upload_started = now;
+    } else {
+        BarcodeApp_CommunicationFault();
+    }
     force_light(LIGHT_YELLOW, now);
 }
 static bool send_ack(uint8_t addr, uint8_t status)
@@ -172,6 +185,19 @@ void BarcodeApp_AdvanceTime(uint32_t now)
             app.view = VIEW_IDLE;
             clear_light(now);
         }
+    }
+    if (!app.comm_fault && app.state == APP_WAIT_RESULT && upload_started != 0u &&
+        elapsed_at_least(now, upload_started, WAIT_TIMEOUT_MS)) {
+        /* The host never replied. Treat as an NG: red lamp, count it, and
+           immediately kick the scanner to retry. upload_started is reset so
+           a subsequent scan in this same FAILED state doesn't re-fire. */
+        app.state = APP_FAILED;
+        app.view = VIEW_FAILED;
+        app.ng_count++;
+        upload_started = 0u;
+        force_light(LIGHT_RED, now);
+        if (!BarcodePort_SendRescan(BARCODE_RESCAN, (uint8_t)sizeof(BARCODE_RESCAN)))
+            BarcodeApp_CommunicationFault();
     }
     if (rescan_pending && elapsed_at_least(now, rescan_started, RESCAN_MS)) {
         rescan_pending = false;
