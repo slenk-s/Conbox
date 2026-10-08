@@ -71,6 +71,7 @@ extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim1;
 extern UART_HandleTypeDef husart2;
 extern UART_HandleTypeDef husart1;
+extern WWDG_HandleTypeDef hwwdg;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -238,6 +239,22 @@ void USART1_IRQHandler(void)
   /* USER CODE BEGIN USART1_IRQn 1 */
 
   /* USER CODE END USART1_IRQn 1 */
+}
+
+/**
+ * @brief This function handles WWDG_IRQn interrupt.
+ * @param None
+ * @retval None
+ */
+void WWDG_IRQHandler(void)
+{
+  /* USER CODE BEGIN WWDG_IRQn 0 */
+
+  /* USER CODE END WWDG_IRQn 0 */
+  HAL_WWDG_IRQHandler(&hwwdg);
+  /* USER CODE BEGIN WWDG_IRQn 1 */
+
+  /* USER CODE END WWDG_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

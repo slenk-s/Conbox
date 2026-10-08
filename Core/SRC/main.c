@@ -13,6 +13,9 @@
 #include "gpio.h"
 #include "usart.h"
 #include "tim.h"
+#include "wwdg.h"
+#include "iwdg.h"
+/* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "barcode_app.h"
 #include "barcode_port.h"
@@ -21,24 +24,36 @@
 
 /* USER CODE END Includes */
 
+/* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
 /* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
 /* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
+
+/* External functions --------------------------------------------------------*/
 /* USER CODE BEGIN ExternalFunctions */
 
 /* USER CODE END ExternalFunctions */
+
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
@@ -52,18 +67,21 @@ int main(void)
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
+  /* MCU Configuration--------------------------------------------------------*/
 
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
 
+  /* Configure the system clock */
   Studio_RCC_Init();
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals. */
+  /* Initialize all configured peripherals */
   Studio_GPIO_Init();
   Studio_USART2_Init();
   Studio_USART1_Init();
@@ -75,17 +93,21 @@ int main(void)
   /* Startup rescan time zero is AFTER all blocking hardware initialization. */
   BarcodeApp_Init(HAL_GetTick());
   BarcodePort_Init();
+  /* WWDG is armed last: HAL_WWDG_Init starts the down-counter immediately, and
+     OLED_Init blocks ~500 ms inside HAL_Delay — arming before that trips the
+     177 ms WWDG window before TIM3 gets its first 10 ms refresh. */
+  Studio_WWDG_Init();
 
   /* USER CODE END 2 */
 
+  /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-    /* USER CODE BEGIN 3 */
     BarcodePort_Poll();
-    BarcodeView_Poll(); 
-
+    BarcodeView_Poll();
+  /* USER CODE END WHILE */
+    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }

@@ -83,6 +83,12 @@ void Studio_RCC_Init(void)
   {
   }
 
+  /* Enable and initialize LSI */
+  LL_RCC_LSI_Enable();
+  while(LL_RCC_LSI_IsReady() != 1)
+  {
+  }
+
   /* Enable and initialize HSE */
   LL_RCC_HSE_SetFreqRegion(LL_RCC_HSE_8_16MHz);
   LL_RCC_HSE_Enable();

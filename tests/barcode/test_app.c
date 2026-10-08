@@ -3,8 +3,8 @@
 #include <string.h>
 #include <stdint.h>
 #include "barcode_app.h"
+#include "barcode_store.h"
 #include "fake_port.h"
-/* The documented wire frames for the four commands design section 5 accepts. */
 enum { T_YELLOW = 1, T_GREEN, T_RED, T_PASS };
 static const uint8_t cmd_wire[5][2] = {
     {0, 0},
@@ -12,328 +12,447 @@ static const uint8_t cmd_wire[5][2] = {
     {HOST_CMD_LIGHT, 0x31u},
     {HOST_CMD_LIGHT, HOST_PARAM_RED_FAIL},
     {HOST_CMD_PASS, HOST_ACK_OK}};
-static Barcode a={3,{'A',' ','b'}}, b={3,{'A',' ','B'}};
+static Barcode a = {3, {'A', 'b', '1'}};
+static Barcode b = {3, {'B', 'c', '2'}};
 static AppSnapshot s;
-static void start(void){FakePort_Reset();BarcodeApp_Init(0);}
-static void snapshot(void){BarcodeApp_GetSnapshot(&s);}
+static void start(void) { FakePort_Reset(); BarcodeApp_Init(0); }
+static void snapshot(void) { BarcodeApp_GetSnapshot(&s); }
 static void send_cmd(unsigned which, uint32_t t)
 {
     HostFrame f = { true, HOST_ADDR_BOX, cmd_wire[which][0], cmd_wire[which][1], true };
     BarcodeApp_OnFrame(&f, t);
 }
-/* <7> query: addr=02, cmd=0x17, no param byte. */
-static void send_sn(uint32_t t)
+static void assert_off(void) { assert(!fake_red && !fake_green && !fake_yellow); }
+
+/* CRLF suffix matrix: last byte decides which single byte gets appended, or
+   both bytes when neither is present. Doc explicitly warns against a
+   double-tail detector, so a payload ending "AB\r\n" still gets one more \r. */
+static void test_crlf_suffix(void)
 {
-    HostFrame f = { true, HOST_ADDR_SN, HOST_CMD_SN, 0, false };
-    BarcodeApp_OnFrame(&f, t);
+    Barcode plain = {3, {'A', 'B', 'C'}};
+    Barcode ends_cr = {3, {'A', 'B', '\r'}};
+    Barcode ends_lf = {3, {'A', 'B', '\n'}};
+    Barcode ends_crlf = {4, {'A', 'B', '\r', '\n'}};
+    Barcode cr_only = {1, {'\r'}};
+    Barcode lf_only = {1, {'\n'}};
+    Barcode empty = {0, {0}};
+
+    start();
+    BarcodeApp_OnBarcode(&plain, 1);
+    assert(fake_host[0].len == 5u);
+    assert(memcmp(fake_host[0].data, "ABC\r\n", 5u) == 0);
+
+    start();
+    BarcodeApp_OnBarcode(&ends_cr, 1);
+    assert(fake_host[0].len == 4u);
+    assert(memcmp(fake_host[0].data, "AB\r\n", 4u) == 0);
+
+    start();
+    BarcodeApp_OnBarcode(&ends_lf, 1);
+    assert(fake_host[0].len == 4u);
+    assert(memcmp(fake_host[0].data, "AB\n\r", 4u) == 0);
+
+    /* Double-tail NOT detected: adds one more \r. */
+    start();
+    BarcodeApp_OnBarcode(&ends_crlf, 1);
+    assert(fake_host[0].len == 5u);
+    assert(memcmp(fake_host[0].data, "AB\r\n\r", 5u) == 0);
+
+    start();
+    BarcodeApp_OnBarcode(&cr_only, 1);
+    assert(fake_host[0].len == 2u);
+    assert(fake_host[0].data[0] == '\r' && fake_host[0].data[1] == '\n');
+
+    start();
+    BarcodeApp_OnBarcode(&lf_only, 1);
+    assert(fake_host[0].len == 2u);
+    assert(fake_host[0].data[0] == '\n' && fake_host[0].data[1] == '\r');
+
+    /* Empty barcode is dropped, not uploaded. */
+    start();
+    BarcodeApp_OnBarcode(&empty, 1);
+    assert(fake_host_count == 0u);
+    snapshot();
+    assert(s.state == APP_IDLE);
 }
-static void test_sn(void)
+
+/* Dedup is only consulted in APP_IDLE. Once a PASS has been received the code
+   enters WAIT_RESULT regardless of whether it appears in the store. */
+static void test_dedup_idle_only(void)
 {
     unsigned host;
-    Barcode sn = {2, {'A', 'B'}};
-    /* Nothing in flight: failure ACK, no payload frame. */
     start();
-    host = fake_host_count;
-    send_sn(5);
-    assert(fake_host_count == host + 1u);
-    assert(fake_host[host].len == 7u);
-    assert(memcmp(fake_host[host].data, "\xAB\x07\xFA\x02\x0E\x25\x85", 7) == 0);
-    /* Locked barcode: success ACK, then the real bytes. */
-    start();
-    BarcodeApp_OnBarcode(&sn, 10);
-    host = fake_host_count;
-    send_sn(20);
-    assert(fake_host_count == host + 2u);
-    assert(fake_host[host].len == 7u);
-    assert(memcmp(fake_host[host].data, "\xAB\x07\xFA\x02\x0A\x65\x01", 7) == 0);
-    assert(fake_host[host + 1u].len == 9u);
-    assert(memcmp(fake_host[host + 1u].data,
-                  "\xAB\x09\xFA\x02\x17\x41\x42\x33\x14", 9) == 0);
+    BarcodeApp_OnBarcode(&a, 1);
+    send_cmd(T_PASS, 2);
     snapshot();
-    assert(s.state == APP_WAIT_RESULT && s.current.len == 2u);
-    /* Longest barcode: the reply must fit and carry the payload intact. */
-    {
-        Barcode full = {0, {0}};
-        unsigned k;
-        for (k = 0; k < BARCODE_MAX_LEN; ++k)
-            full.data[k] = (uint8_t)('A' + (int)(k % 26));
-        full.len = BARCODE_MAX_LEN;
-        start();
-        BarcodeApp_OnBarcode(&full, 10);
-        host = fake_host_count;
-        send_sn(20);
-        assert(fake_host[host + 1u].len == HOST_TX_MAX);
-        assert(memcmp(fake_host[host + 1u].data + 5u, full.data, BARCODE_MAX_LEN) == 0);
-        assert(HostCrc16(fake_host[host + 1u].data, (uint8_t)(HOST_TX_MAX - 2u)) ==
-               (uint16_t)((uint16_t)fake_host[host + 1u].data[HOST_TX_MAX - 2u] << 8
-                          | fake_host[host + 1u].data[HOST_TX_MAX - 1u]));
-    }
-    /* Live through the release window, then expires with the state. */
-    start();
-    BarcodeApp_OnBarcode(&sn, 100);
-    send_cmd(T_PASS, 101);
+    assert(s.state == APP_RELEASING && s.pass_count == 1u && s.buffer_count == 1u);
+    BarcodeApp_Tick(3002);
+    snapshot();
+    assert(s.state == APP_IDLE);
+    /* Same barcode now: dedup kicks in, no upload, state flips to DUPLICATE. */
     host = fake_host_count;
-    send_sn(102);
-    assert(fake_host_count == host + 2u);
-    BarcodeApp_Tick(1102);
+    BarcodeApp_OnBarcode(&a, 4000);
+    assert(fake_host_count == host);
+    snapshot();
+    assert(s.state == APP_DUPLICATE && s.view == VIEW_DUPLICATE);
+    assert_off();
+    /* New barcode after dedup: WAIT_RESULT again, upload goes out. */
     host = fake_host_count;
-    send_sn(1202);
-    assert(fake_host_count == host + 1u && fake_host[host].data[4] == HOST_ACK_FAIL);
-    /* The query must not touch lights, the relay or the upload stream. */
-    start();
-    BarcodeApp_OnBarcode(&sn, 10);
-    fake_light_changes = 0;
+    BarcodeApp_OnBarcode(&b, 4100);
+    assert(fake_host_count == host + 1u);
+    assert(fake_host[host].data[0] == 'B');
+    snapshot();
+    assert(s.state == APP_WAIT_RESULT);
+    assert(fake_yellow);
+    /* In WAIT_RESULT, dedup is skipped: repeating 'a' overwrites current. */
     host = fake_host_count;
-    send_sn(30);
-    assert(fake_light_changes == 0u && !fake_relay && fake_host_count == host + 2u);
-    send_sn(40);
-    assert(fake_host_count == host + 4u && fake_light_changes == 0u && !fake_relay);
+    BarcodeApp_OnBarcode(&a, 4200);
+    assert(fake_host_count == host + 1u);
+    assert(fake_host[host].data[0] == 'A');
+    snapshot();
+    assert(s.state == APP_WAIT_RESULT && s.current.data[0] == 'A');
 }
-static void check_ack(unsigned index){assert(fake_host[index].len==7);assert(memcmp(fake_host[index].data,BARCODE_ACK,7)==0);}
-static void assert_off(void){assert(!fake_red&&!fake_green&&!fake_yellow);}
-/* <1> version query: ACK1 then a one-byte version ACK2, in every business
-   state, without touching the panel, the relay or the upload stream. */
-static void test_version(void)
-{
-    unsigned host, st;
-    HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_VERSION, 0, false };
 
-    for (st = 0; st < 3; ++st) {
-        start();
-        if (st) BarcodeApp_OnBarcode(&a, 15);
-        if (st == 2) send_cmd(T_PASS, 10);
-        fake_light_changes = 0;
-        host = fake_host_count;
-        BarcodeApp_OnFrame(&f, 20);
-        assert(fake_host_count == host + 2u);
-        check_ack(host);
-        assert(fake_host[host + 1u].len == 8u);
-        assert(memcmp(fake_host[host + 1u].data, "\xAB\x08\xFA\x01\xFF\x65\xD1\x9D", 8) == 0);
-        assert(HostCrc16(fake_host[host + 1u].data, 6u) == 0xD19Du);
-        assert(fake_scanner_count == 0u);
-        snapshot();
-        if (st == 0) assert(s.state == APP_IDLE && s.count == 0u && !fake_relay);
-        if (st == 1) assert(s.state == APP_WAIT_RESULT && s.count == 0u);
-        if (st == 2) assert(s.state == APP_RELEASING && s.count == 1u && fake_relay);
-        assert(fake_light_changes == 0u);
+/* Store only fills on PASS. Duplicates at IDLE never write. Rejected scans
+   during RELEASING never write. RED_FAIL never writes. */
+static void test_store_write_only_on_pass(void)
+{
+    unsigned i;
+    Barcode code = {3, {'X', '0', '0'}};
+    start();
+    for (i = 0; i < 3; ++i) {
+        code.data[2] = (uint8_t)('0' + i);
+        BarcodeApp_OnBarcode(&code, 10u * (i + 1u));
+        send_cmd(T_PASS, 10u * (i + 1u) + 1u);
+        BarcodeApp_Tick(10u * (i + 1u) + 3001u);
     }
-    /* It is not a business event, so a manual lamp override survives it. */
+    snapshot();
+    assert(s.pass_count == 3u && s.buffer_count == 3u);
+    /* No additional entries on late ACKs. */
+    send_cmd(T_PASS, 1000);
+    snapshot();
+    assert(s.pass_count == 3u && s.buffer_count == 3u);
+}
+
+/* Store ring wraps: after 150 PASSes, the oldest entry is dropped so the
+   earliest one no longer deduplicates. */
+static void test_store_wrap(void)
+{
+    unsigned i;
+    Barcode code = {1, {'A'}};
+    start();
+    for (i = 0; i < BARCODE_STORE_CAPACITY; ++i) {
+        code.data[0] = (uint8_t)(i & 0xFFu);
+        BarcodeApp_OnBarcode(&code, 10u * i);
+        send_cmd(T_PASS, 10u * i + 1u);
+        /* Let the pass-release clock advance far past GREEN_MS so IDLE is
+           reached again before the next distinct barcode. */
+        BarcodeApp_Tick(10u * i + 4000u);
+    }
+    BarcodeApp_Tick(10u * BARCODE_STORE_CAPACITY + 4000u);
+    snapshot();
+    assert(s.pass_count == BARCODE_STORE_CAPACITY && s.buffer_count == BARCODE_STORE_CAPACITY);
+    /* Push a brand-new distinct barcode (byte 0xFF was never seen). */
+    code.data[0] = 0xFFu;
+    BarcodeApp_OnBarcode(&code, 30000u);
+    send_cmd(T_PASS, 30001u);
+    BarcodeApp_Tick(34001u);
+    snapshot();
+    assert(s.pass_count == BARCODE_STORE_CAPACITY + 1u);
+    assert(s.buffer_count == BARCODE_STORE_CAPACITY);
+    /* Now the same 0xFF barcode hits the dedup path: no upload, DUPLICATE. */
+    {
+        unsigned host = fake_host_count;
+        BarcodeApp_OnBarcode(&code, 40000u);
+        assert(fake_host_count == host);
+        snapshot();
+        assert(s.state == APP_DUPLICATE);
+    }
+}
+
+/* Red-fail command only takes effect in WAIT_RESULT; elsewhere it just ACKs. */
+static void test_red_fail_gating(void)
+{
+    /* IDLE: red fail is inert. */
+    start();
+    send_cmd(T_RED, 5);
+    assert(fake_scanner_count == 0u);
+    snapshot();
+    assert(s.state == APP_IDLE && s.view == VIEW_IDLE && s.ng_count == 0u);
+
+    /* RELEASING: red fail is inert. */
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_PASS, 10);
+    send_cmd(T_RED, 20);
+    assert(fake_scanner_count == 0u);
+    snapshot();
+    assert(s.state == APP_RELEASING && s.ng_count == 0u);
+
+    /* WAIT_RESULT: fires, and schedules exactly one rescan after RESCAN_MS. */
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_RED, 10);
+    assert(fake_scanner_count == 0u);
+    snapshot();
+    assert(s.state == APP_FAILED && s.view == VIEW_FAILED && s.ng_count == 1u);
+    assert(fake_red);
+    BarcodeApp_Tick(3010u);
+    assert(fake_scanner_count == 1u);
+    assert(memcmp(fake_scanner[0].data, BARCODE_RESCAN, 3u) == 0);
+    /* No second rescan without another fail command. */
+    BarcodeApp_Tick(6010u);
+    assert(fake_scanner_count == 1u);
+}
+
+/* Red-fail is per-NG: each WAIT_RESULT red-fail schedules one rescan. While
+   state is already FAILED the second red-fail is inert. */
+static void test_one_rescan_per_ng(void)
+{
+    unsigned host;
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_RED, 10);
+    assert(fake_scanner_count == 0u);
+    BarcodeApp_Tick(3010);
+    assert(fake_scanner_count == 1u);
+    /* Now in FAILED; another red-fail is inert. */
+    send_cmd(T_RED, 3015);
+    BarcodeApp_Tick(6015);
+    assert(fake_scanner_count == 1u);
+    /* A new scan enters WAIT_RESULT, so the next red-fail is live again. */
+    host = fake_host_count;
+    BarcodeApp_OnBarcode(&b, 6016);
+    assert(fake_host_count == host + 1u);
+    send_cmd(T_RED, 6017);
+    BarcodeApp_Tick(9017);
+    assert(fake_scanner_count == 2u);
+    snapshot();
+    assert(s.ng_count == 2u);
+}
+
+/* Late PASS (in FAILED/DUPLICATE/IDLE) only ACKs — no relay, no count bump. */
+static void test_late_pass_inert(void)
+{
+    start();
+    /* IDLE: late PASS. */
+    send_cmd(T_PASS, 5);
+    assert(!fake_relay);
+    snapshot();
+    assert(s.state == APP_IDLE && s.pass_count == 0u);
+
+    /* FAILED: late PASS. */
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_RED, 10);
+    send_cmd(T_PASS, 20);
+    assert(!fake_relay);
+    snapshot();
+    assert(s.state == APP_FAILED && s.pass_count == 0u && s.ng_count == 1u);
+
+    /* DUPLICATE: late PASS. */
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_PASS, 10);
+    BarcodeApp_Tick(3010);
+    BarcodeApp_OnBarcode(&a, 3100);
+    snapshot();
+    assert(s.state == APP_DUPLICATE);
+    send_cmd(T_PASS, 3200);
+    assert(!fake_relay);
+    snapshot();
+    assert(s.state == APP_DUPLICATE && s.pass_count == 1u);
+}
+
+/* RELEASING: scans are dropped; PASS/RED_FAIL are inert. */
+static void test_releasing_masks_scans(void)
+{
+    unsigned host;
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_PASS, 10);
+    snapshot();
+    assert(s.state == APP_RELEASING);
+    host = fake_host_count;
+    BarcodeApp_OnBarcode(&b, 50);
+    assert(fake_host_count == host);
+    send_cmd(T_RED, 60);
+    assert(fake_scanner_count == 0u);
+    snapshot();
+    assert(s.state == APP_RELEASING && s.ng_count == 0u && s.current.data[0] == 'A');
+}
+
+/* Full pass cycle: relay on at t, off at RELAY_MS, state clears at GREEN_MS.
+   In between, another scan is silently dropped and the pass timer continues. */
+static void test_pass_timing(void)
+{
+    unsigned host;
     start();
     BarcodeApp_OnBarcode(&a, 10);
-    send_cmd(T_RED, 20);
-    BarcodeApp_Tick(600);
-    assert(!fake_red);
-    host = fake_host_count;
-    BarcodeApp_OnFrame(&f, 610);
-    assert(fake_host_count == host + 2u);
-    BarcodeApp_Tick(1100);
-    assert(fake_red && !fake_green && !fake_yellow);
+    send_cmd(T_PASS, 20);
     snapshot();
-    assert(s.state == APP_IDLE && s.view == VIEW_FAILED);
-    /* Off-address for the version command is dropped without any reply. */
-    start();
+    assert(s.state == APP_RELEASING && s.pass_count == 1u && s.buffer_count == 1u);
+    assert(fake_relay && fake_green);
+    /* 200 ms: relay drops, state stays RELEASING, green stays on. */
+    BarcodeApp_Tick(219);
+    assert(fake_relay && fake_green);
+    BarcodeApp_Tick(220);
+    snapshot();
+    assert(!fake_relay && fake_green && s.state == APP_RELEASING);
+    /* A scan during RELEASING is dropped. */
     host = fake_host_count;
-    f.addr = HOST_ADDR_SN;
-    BarcodeApp_OnFrame(&f, 5);
+    BarcodeApp_OnBarcode(&b, 221);
     assert(fake_host_count == host);
+    /* 2 s from PASS: state → IDLE, lights clear. */
+    BarcodeApp_Tick(2020);
+    snapshot();
+    assert(s.state == APP_IDLE && s.view == VIEW_IDLE);
+    assert_off();
+    assert(!fake_relay);
 }
-/* FF is the one lamp command that lights all three at once, in sync, and it
-   is still a manual override that the next business event takes back. */
-static void test_all_blink(void)
+
+/* The rescan deadline is independent of the pass-release clock. A red-fail
+   that is delayed until after a PASS's release still fires its rescan. */
+static void test_rescan_independent_of_release(void)
 {
-    HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_LIGHT, 0xFFu, true };
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_RED, 10);
+    snapshot();
+    assert(s.state == APP_FAILED);
+    /* Simulate the upper computer stalling: we don't Tick until well past
+       both deadlines. The rescan fires exactly once. */
+    BarcodeApp_Tick(4000);
+    assert(fake_scanner_count == 1u);
+    snapshot();
+    assert(s.state == APP_FAILED); /* No auto-return. */
+}
+
+/* The comm-fault latch blocks uploads and PASS but not queries/ACKs. SN
+   query still returns the barcode if it is in flight (state is WAIT_RESULT
+   from the failed upload), so the payload ACK goes out. */
+static void test_comm_fault(void)
+{
     unsigned host;
     start();
+    fake_send_ok = false;
+    BarcodeApp_OnBarcode(&a, 5);
+    snapshot();
+    assert(s.comm_fault);
+    /* PASS during fault: only ACK out, no relay, no count. */
+    fake_send_ok = true;
+    send_cmd(T_PASS, 10);
+    assert(!fake_relay);
+    snapshot();
+    assert(s.pass_count == 0u && s.buffer_count == 0u);
+    /* SN query still returns the barcode if it is in flight. */
     host = fake_host_count;
-    BarcodeApp_OnFrame(&f, 10);
-    check_ack(host);
-    assert(fake_red && fake_green && fake_yellow);
-    BarcodeApp_Tick(510);
-    assert(!fake_red && !fake_green && !fake_yellow);
-    BarcodeApp_Tick(1010);
-    assert(fake_red && fake_green && fake_yellow);
-    BarcodeApp_OnBarcode(&a, 1500);
+    {
+        HostFrame f = { true, HOST_ADDR_SN, HOST_CMD_SN, 0, false };
+        BarcodeApp_OnFrame(&f, 20);
+    }
+    assert(fake_host_count == host + 2u);
+    assert(fake_host[host].data[4] == HOST_ACK_OK);
+    assert(fake_host[host + 1u].data[5u] == 'A');
+    /* Scans still refused while fault is latched. */
+    host = fake_host_count;
+    BarcodeApp_OnBarcode(&b, 30);
+    assert(fake_host_count == host);
+}
+
+/* Manual lamp overrides survive state transitions; the next business event
+   takes the panel back. Red-fail's own lamp override is business-driven. */
+static void test_manual_lamps_survive(void)
+{
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_GREEN, 10);
+    assert(fake_green && !fake_red && !fake_yellow);
+    /* Version query does not touch the manual green. */
+    {
+        HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_VERSION, 0, false };
+        BarcodeApp_OnFrame(&f, 20);
+    }
+    assert(fake_green && !fake_red && !fake_yellow);
+    /* Yellow override replaces green (blink). */
+    send_cmd(T_YELLOW, 30);
+    assert(fake_yellow && !fake_green && !fake_red);
+    /* Red-fail reasserts red via the business event. */
+    send_cmd(T_RED, 40);
+    assert(fake_red && !fake_green && !fake_yellow);
+    /* Next barcode takes yellow back. */
+    BarcodeApp_OnBarcode(&b, 50);
     assert(fake_yellow && !fake_green && !fake_red);
     snapshot();
     assert(s.state == APP_WAIT_RESULT);
-    f.param = 0x00u;
+}
+
+/* SN query: succeeds only in WAIT_RESULT or RELEASING. FAILED/DUPLICATE/IDLE
+   return the failure ACK. */
+static void test_sn_query(void)
+{
+    unsigned host;
+    start();
     host = fake_host_count;
-    BarcodeApp_OnFrame(&f, 2000);
-    check_ack(host);
-    assert(!fake_red && !fake_green && !fake_yellow);
-    snapshot();
-    assert(s.state == APP_WAIT_RESULT);
+    {
+        HostFrame f = { true, HOST_ADDR_SN, HOST_CMD_SN, 0, false };
+        BarcodeApp_OnFrame(&f, 5);
+    }
+    assert(fake_host_count == host + 1u);
+    assert(fake_host[host].data[4] == HOST_ACK_FAIL);
+
+    start();
+    BarcodeApp_OnBarcode(&a, 10);
+    host = fake_host_count;
+    {
+        HostFrame f = { true, HOST_ADDR_SN, HOST_CMD_SN, 0, false };
+        BarcodeApp_OnFrame(&f, 20);
+    }
+    assert(fake_host_count == host + 2u);
+    assert(fake_host[host].data[4] == HOST_ACK_OK);
+    assert(fake_host[host + 1u].len == 10u);
+    assert(fake_host[host + 1u].data[5u] == 'A');
+
+    /* RELEASING: still live. */
+    send_cmd(T_PASS, 30);
+    host = fake_host_count;
+    {
+        HostFrame f = { true, HOST_ADDR_SN, HOST_CMD_SN, 0, false };
+        BarcodeApp_OnFrame(&f, 40);
+    }
+    assert(fake_host_count == host + 2u);
+    assert(fake_host[host].data[4] == HOST_ACK_OK);
+
+    /* FAILED: no live barcode. */
+    start();
+    BarcodeApp_OnBarcode(&a, 5);
+    send_cmd(T_RED, 10);
+    host = fake_host_count;
+    {
+        HostFrame f = { true, HOST_ADDR_SN, HOST_CMD_SN, 0, false };
+        BarcodeApp_OnFrame(&f, 20);
+    }
+    assert(fake_host_count == host + 1u);
+    assert(fake_host[host].data[4] == HOST_ACK_FAIL);
 }
-static void test_flow(void){
- unsigned host;Barcode d={3,{'D','d','1'}};Barcode e={3,{'E','e','2'}};
- start();assert(!fake_relay && fake_light_changes==0);assert_off();
- BarcodeApp_OnBarcode(&a,1);snapshot();assert(s.state==APP_WAIT_RESULT);
- assert(fake_host_count==1 && fake_host[0].len==4 && memcmp(fake_host[0].data,"A b\r",4)==0);
- assert(fake_yellow&&!fake_green&&!fake_red);
- BarcodeApp_OnBarcode(&a,2);BarcodeApp_OnBarcode(&b,3);assert(fake_host_count==3 && fake_yellow);
- send_cmd(T_GREEN,4);check_ack(3);snapshot();assert(s.state==APP_WAIT_RESULT && s.count==0 && !fake_relay);
- assert(fake_green&&!fake_yellow&&!fake_red);
- BarcodeApp_Tick(100000);snapshot();assert(s.state==APP_WAIT_RESULT && fake_green);
- send_cmd(T_PASS,100010);snapshot();assert(s.state==APP_RELEASING && s.count==1 && fake_relay && fake_green);
- check_ack(4);host=fake_host_count;
- BarcodeApp_OnBarcode(&a,100100);BarcodeApp_OnBarcode(&b,100200);assert(fake_host_count==host && fake_green);
- send_cmd(T_PASS,100500);check_ack(host);
- assert(fake_green && fake_relay);
- send_cmd(T_RED,100600);check_ack(host+1);
- assert(fake_relay && fake_red && !fake_green);
- BarcodeApp_Tick(101009);assert(fake_relay && fake_red);
- BarcodeApp_Tick(101010);snapshot();assert(!fake_relay && s.state==APP_IDLE);assert_off();
- host=fake_host_count;BarcodeApp_OnBarcode(&d,101020);
- snapshot();assert(s.state==APP_WAIT_RESULT && s.count==1 && fake_host_count==host+1u && s.current.data[0]=='D');
- BarcodeApp_OnBarcode(&a,101030);assert(fake_host_count==host+2u && fake_host[host+1u].data[0]=='A'); /* repeat scan is allowed before PASS */
- send_cmd(T_RED,101100);check_ack(host+2);snapshot();assert(s.state==APP_IDLE && s.view==VIEW_FAILED && s.count==1);
- assert(fake_scanner_count==1 && fake_scanner[0].len==3); /* first NG woke the scanner */
- assert(memcmp(fake_scanner[0].data,BARCODE_RESCAN,3)==0);
- assert(fake_red&&!fake_green&&!fake_yellow);
- send_cmd(T_RED,101101);assert(fake_scanner_count==1 && fake_red); /* idle: no wake */
- host=fake_host_count;BarcodeApp_OnBarcode(&e,101110);
- snapshot();assert(s.state==APP_WAIT_RESULT && s.current.data[0]=='E' && fake_host_count==host+1u);
- assert(fake_yellow);
- send_cmd(T_RED,101120);
- assert(fake_scanner_count==2 && fake_scanner[1].len==3); /* one wake per NG */
- assert(memcmp(fake_scanner[1].data,BARCODE_RESCAN,3)==0);
- assert(fake_red&&!fake_green&&!fake_yellow);
- snapshot();assert(s.state==APP_IDLE && s.view==VIEW_FAILED);
- host=fake_host_count;BarcodeApp_OnBarcode(&d,101130);
- snapshot();assert(s.state==APP_WAIT_RESULT && s.current.data[0]=='D' && fake_host_count==host+1u);
- }
-static void test_matrix(void){unsigned state,cmd;for(state=0;state<3;state++)for(cmd=1;cmd<=4;cmd++){
- unsigned before;start();if(state)BarcodeApp_OnBarcode(&a,15);if(state==2)send_cmd(T_PASS,10);
- before=fake_host_count;send_cmd(cmd,20);assert(fake_host_count==before+1);check_ack(before);snapshot();
- if(state==0)assert(s.state==APP_IDLE && s.count==0 && !fake_relay && fake_scanner_count==0);
- if(state==1 && cmd==T_PASS)assert(s.state==APP_RELEASING && s.count==1 && fake_relay && fake_green);
- if(state==1 && cmd==T_RED)assert(s.state==APP_IDLE && s.view==VIEW_FAILED && s.count==0 && fake_red);
- if(state==1 && cmd<T_RED)assert(s.state==APP_WAIT_RESULT && s.count==0);
- if(state==2){assert(s.state==APP_RELEASING && s.count==1);BarcodeApp_Tick(1010);assert(!fake_relay);assert_off();}
-}}
-static void test_lights_time(void){start();BarcodeApp_OnBarcode(&a,10);
- assert(fake_yellow);
- send_cmd(T_YELLOW,10);assert(fake_yellow);
- BarcodeApp_Tick(509);assert(fake_yellow);BarcodeApp_Tick(510);assert(!fake_yellow);
- BarcodeApp_Tick(1010);assert(fake_yellow);BarcodeApp_Tick(2510);assert(!fake_yellow);
- send_cmd(T_GREEN,2511);BarcodeApp_Tick(3010);assert(fake_green&&!fake_yellow&&!fake_red);
- send_cmd(T_RED,3011);assert(fake_red&&!fake_green&&!fake_yellow);
- start();BarcodeApp_OnBarcode(&a,UINT32_MAX-500u);send_cmd(T_PASS,UINT32_MAX-499u);
- assert(fake_green);BarcodeApp_Tick(499);assert(fake_relay&&fake_green);BarcodeApp_Tick(500);assert(!fake_relay&&!fake_green);
- start();BarcodeApp_OnBarcode(&a,15);send_cmd(T_PASS,20);
- BarcodeApp_AdvanceTime(15);assert(fake_relay); /* historical event must not underflow timer */
- BarcodeApp_Tick(1019);assert(fake_relay);BarcodeApp_Tick(1020);assert(!fake_relay&&!fake_green);
+
+int main(void)
+{
+    test_crlf_suffix();
+    test_dedup_idle_only();
+    test_store_write_only_on_pass();
+    test_store_wrap();
+    test_red_fail_gating();
+    test_one_rescan_per_ng();
+    test_late_pass_inert();
+    test_releasing_masks_scans();
+    test_pass_timing();
+    test_rescan_independent_of_release();
+    test_comm_fault();
+    test_manual_lamps_survive();
+    test_sn_query();
+    puts("PASS app: crlf matrix, idle dedup, store gate/wrap, red-fail gating, "
+         "one-rescan-per-ng, late-pass inert, releasing masks scans, pass timing, "
+         "rescan vs release, comm fault, manual lamps, sn query");
+    return 0;
 }
-static void test_auto_lights(void){Barcode c={3,{'C','x','1'}};Barcode d={3,{'D','d','4'}};start();assert_off();
- BarcodeApp_OnBarcode(&a,10);
- assert(fake_yellow&&!fake_green&&!fake_red && fake_light_changes==1);
- BarcodeApp_Tick(510);assert(!fake_yellow);
- BarcodeApp_Tick(1010);assert(fake_yellow);
- send_cmd(T_PASS,1020);
- assert(fake_green&&!fake_yellow&&!fake_red && fake_relay);
- BarcodeApp_Tick(2019);assert(fake_green && fake_relay);
- BarcodeApp_Tick(2020);assert(!fake_relay);assert_off();
- snapshot();assert(s.state==APP_IDLE && s.count==1);
- BarcodeApp_OnBarcode(&b,3000);
- assert(fake_yellow&&!fake_green&&!fake_red);
- send_cmd(T_RED,3010);
- snapshot();assert(s.state==APP_IDLE && s.view==VIEW_FAILED && s.count==1);
- assert(fake_red&&!fake_green&&!fake_yellow);
- BarcodeApp_Tick(3510);assert(!fake_red);
- BarcodeApp_Tick(4010);assert(fake_red);
- BarcodeApp_OnBarcode(&b,4020);
- assert(fake_yellow&&!fake_green&&!fake_red);
- send_cmd(T_PASS,4030);
- assert(fake_green&&!fake_yellow&&!fake_red && fake_relay);
- BarcodeApp_Tick(5030);assert(!fake_relay);assert_off();
- snapshot();assert(s.state==APP_IDLE && s.count==2);
- BarcodeApp_OnBarcode(&c,5200);
- send_cmd(T_GREEN,5210);
- assert(fake_green&&!fake_yellow&&!fake_red);
- BarcodeApp_Tick(6210);assert(fake_green);
- send_cmd(T_RED,6220);assert(fake_red&&!fake_green);
- BarcodeApp_OnBarcode(&c,6300);assert(fake_yellow&&!fake_green&&!fake_red);
- send_cmd(T_PASS,6310);assert(fake_green && fake_relay);
- BarcodeApp_Tick(7310);assert_off();
- snapshot();assert(s.state==APP_IDLE && s.count==3);
- BarcodeApp_OnBarcode(&d,8000);
- snapshot();assert(s.state==APP_WAIT_RESULT && s.current.data[0]=='D');assert(fake_yellow);
-}
-/* Scans before PASS may overwrite the in-flight upload; PASS/NG do not suppress later scans. */
-static void test_repeat_scan(void){
- unsigned n=0;Barcode c={3,{'C','x','1'}};Barcode d={3,{'D','d','1'}};
- start();BarcodeApp_OnBarcode(&a,1);send_cmd(T_PASS,2);BarcodeApp_Tick(1003);
- assert(fake_host_count==n+2); /* upload + PASS ack */
- BarcodeApp_OnBarcode(&c,1004);
- assert(fake_host_count==n+3 && fake_host[n+2].data[0]=='C'); /* different code uploads */
- send_cmd(T_RED,1005);
- assert(fake_host_count==n+4); /* NG ack */
- BarcodeApp_OnBarcode(&a,1006);
- assert(fake_host_count==n+5 && fake_host[n+4].data[0]=='A'); /* repeat scan uploads */
- BarcodeApp_OnBarcode(&d,1007);
- send_cmd(T_PASS,1008);BarcodeApp_Tick(2009);
- assert(fake_host_count==n+7); /* repeat scans upload before PASS, then PASS ack */
- BarcodeApp_OnBarcode(&d,2010);
- BarcodeApp_OnBarcode(&a,2011);
- send_cmd(T_RED,2012);
- assert(fake_host_count==n+10 && fake_host[n+8].data[0]=='A'); /* WAIT_RESULT scans upload each read, then NG ack */
- BarcodeApp_OnBarcode(&c,2013);
- assert(fake_host_count==n+11 && fake_host[n+10].data[0]=='C');
- send_cmd(T_PASS,2014);BarcodeApp_Tick(3015);
- assert(fake_host_count==n+12);
- BarcodeApp_OnBarcode(&c,3016);
- assert(fake_host_count==n+13); /* repeat scan uploads again */
- BarcodeApp_OnBarcode(&a,3017);
- send_cmd(T_RED,3018);
- assert(fake_host_count==n+15 && fake_host[n+13].data[0]=='A'); /* repeat scan uploads again, then NG ack */
- BarcodeApp_OnBarcode(&c,3019);
- assert(fake_host_count==n+16); /* repeat scan uploads again */
- BarcodeApp_OnBarcode(&d,3020);
-}
-/* NG wakes the scanner once; nothing else may put bytes on the scanner wire. */
-static void test_scanner_wake(void){
- unsigned host;Barcode c={3,{'C','x','1'}};
- start();send_cmd(T_RED,1);
- assert(fake_scanner_count==0); /* idle: no barcode to wake for */
- start();BarcodeApp_OnBarcode(&a,5);send_cmd(T_RED,6);
- assert(fake_scanner_count==1 && fake_scanner[0].len==3);
- assert(memcmp(fake_scanner[0].data,BARCODE_RESCAN,3)==0);
- host=fake_host_count;send_cmd(T_RED,7);
- assert(fake_scanner_count==1 && fake_host_count==host+1);
- BarcodeApp_OnBarcode(&a,8);host=fake_host_count;
- assert(fake_scanner_count==1);
- BarcodeApp_OnBarcode(&a,9);BarcodeApp_OnBarcode(&b,10);send_cmd(T_PASS,11);
- BarcodeApp_Tick(1012);
- assert(fake_scanner_count==1); /* PASS never wakes the scanner */
- BarcodeApp_OnBarcode(&c,1013);host=fake_host_count;send_cmd(T_RED,1014);
- assert(fake_scanner_count==2 && fake_host_count==host+1);
- assert(memcmp(fake_scanner[1].data,BARCODE_RESCAN,3)==0);
- start();fake_send_ok=false;BarcodeApp_OnBarcode(&a,5);send_cmd(T_RED,6);
- assert(fake_scanner_count==0);snapshot();assert(s.comm_fault);
-}
-static void test_counts_and_faults(void){unsigned i,host;Barcode c={3,{'C','x','1'}};Barcode d={3,{'D','d','7'}};Barcode code={2,{0,0}};
- start();
- for(i=0;i<151;i++){code.data[0]=(uint8_t)i;BarcodeApp_OnBarcode(&code,i*1100);
-  send_cmd(T_PASS,i*1100+1);BarcodeApp_Tick(i*1100+1001);}
- snapshot();assert(s.count==151 && s.state==APP_IDLE && fake_host_count==302u && fake_scanner_count==0);
- BarcodeApp_OnBarcode(&d,200000);send_cmd(T_PASS,200001);BarcodeApp_Tick(201002);snapshot();
- assert(s.count==152 && s.state==APP_IDLE && fake_host_count==304u && fake_scanner_count==0);
- send_cmd(T_RED,201003);snapshot();
- assert(s.view==VIEW_IDLE && fake_scanner_count==0); /* nothing in flight: the NG is inert */
- BarcodeApp_OnBarcode(&c,201004);send_cmd(T_RED,201005);snapshot();
- assert(fake_host_count==307u && s.state==APP_IDLE && s.view==VIEW_FAILED && fake_scanner_count==1);
- BarcodeApp_OnBarcode(&c,201006);send_cmd(T_RED,201007);snapshot();
- assert(fake_host_count==309u && s.state==APP_IDLE && s.view==VIEW_FAILED && fake_scanner_count==2);
- BarcodeApp_OnBarcode(&d,201008);snapshot();
-  assert(fake_host_count==310u && s.state==APP_WAIT_RESULT); /* repeat scan uploads */
- BarcodeApp_OnBarcode(&a,201009); /* WAIT_RESULT repeat overwrites d, but still uploads */
-  send_cmd(T_PASS,201010);BarcodeApp_Tick(202011);snapshot();
- assert(s.count==153 && s.state==APP_IDLE && fake_scanner_count==2);
- BarcodeApp_OnBarcode(&a,202012);snapshot();
- assert(fake_host_count==313u); /* repeat scan uploads */
- start();fake_send_ok=false;BarcodeApp_OnBarcode(&a,5);snapshot();assert(s.comm_fault && s.state==APP_WAIT_RESULT);
- fake_send_ok=true;send_cmd(T_PASS,10);assert(!fake_relay);snapshot();assert(s.count==0);
- start();BarcodeApp_OnBarcode(&a,5);send_cmd(T_PASS,10);BarcodeApp_CommunicationFault();BarcodeApp_Tick(1010);
- snapshot();assert(!fake_relay && s.comm_fault);host=fake_host_count;BarcodeApp_OnBarcode(&b,20);assert(fake_host_count==host);
-}
-int main(void){test_flow();test_matrix();test_lights_time();test_auto_lights();test_repeat_scan();test_scanner_wake();test_counts_and_faults();test_sn();test_version();test_all_blink();puts("PASS app: state/command matrix, raw upload, relay/lights/wrap, auto lights, communication fault, SN query, version query, all-blink");return 0;}

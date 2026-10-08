@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    gpio.c
+  * @file    iwdg.c
   * @brief   This file provides code for the configuration
-  *          of all used GPIO.
+  *          of all used IWDG.
   ******************************************************************************
   * @attention
   *
@@ -31,7 +31,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include "gpio.h"
+#include "iwdg.h"
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
@@ -52,6 +52,7 @@
 /* USER CODE END Macro */
 
 /* Public variables ---------------------------------------------------------*/
+IWDG_HandleTypeDef hiwdg;
 /* USER CODE BEGIN PV */
 /* USER CODE END PV */
 
@@ -71,43 +72,25 @@
 /* USER CODE END EV */
 
 /***************************************
- * @brief GPIO Init
+ * @brief IWDG Init
  **************************************/
-void Studio_GPIO_Init(void)
+void Studio_IWDG_Init(void)
 {
-  /* USER CODE BEGIN Studio_GPIO_Init 0 */
+  /* USER CODE BEGIN Studio_IWDG_Init 0 */
 
-  /* USER CODE END Studio_GPIO_Init 0 */
+  /* USER CODE END Studio_IWDG_Init 0 */
 
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
+  hiwdg.Init.Reload = 0xFFF;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
+  /* USER CODE BEGIN Studio_IWDG_Init 1 */
 
-  HAL_GPIO_WritePin(GPIOA, LED_R_Pin|LED_G_Pin|LED_B_Pin|KEY_Con_Pin, GPIO_PIN_RESET);
-  GPIO_InitStruct.Pin = LED_R_Pin|LED_G_Pin|LED_B_Pin|KEY_Con_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  HAL_GPIO_WritePin(GPIOB, OLED_RES_Pin, GPIO_PIN_SET);
-  GPIO_InitStruct.Pin = OLED_RES_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  HAL_GPIO_WritePin(GPIOB, OLED_SCL_Pin|OLED_SDA_Pin, GPIO_PIN_SET);
-  GPIO_InitStruct.Pin = OLED_SCL_Pin|OLED_SDA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /* USER CODE BEGIN Studio_GPIO_Init 1 */
-
-  /* USER CODE END Studio_GPIO_Init 1 */
+  /* USER CODE END Studio_IWDG_Init 1 */
 }
 
 /* USER CODE BEGIN ExternalFunctions */

@@ -10,9 +10,8 @@
       <TargetName>T1</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pArmCC>5060960::V5.06 update 7 (build 960)::.\5.06_SLENK</pArmCC>
-      <pCCUsed>5060960::V5.06 update 7 (build 960)::.\5.06_SLENK</pCCUsed>
-      <uAC6>0</uAC6>
+      <pCCUsed>6210000::V6.21::ARMCLANG</pCCUsed>
+      <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
           <Device>PY32F003x8</Device>
@@ -315,7 +314,7 @@
           </ArmAdsMisc>
           <Cads>
             <interw>1</interw>
-            <Optim>1</Optim>
+            <Optim>2</Optim>
             <oTime>0</oTime>
             <SplitLS>0</SplitLS>
             <OneElfS>1</OneElfS>
@@ -324,14 +323,14 @@
             <PlainCh>0</PlainCh>
             <Ropi>0</Ropi>
             <Rwpi>0</Rwpi>
-            <wLevel>2</wLevel>
+            <wLevel>3</wLevel>
             <uThumb>0</uThumb>
             <uSurpInc>0</uSurpInc>
             <uC99>1</uC99>
             <uGnu>1</uGnu>
             <useXO>0</useXO>
-            <v6Lang>1</v6Lang>
-            <v6LangP>1</v6LangP>
+            <v6Lang>3</v6Lang>
+            <v6LangP>3</v6LangP>
             <vShortEn>1</vShortEn>
             <vShortWch>1</vShortWch>
             <v6Lto>0</v6Lto>
@@ -451,6 +450,16 @@
               <FilePath>../Drivers/PY32F003_HAL_Driver/Src/py32f0xx_hal_tim_ex.c</FilePath>
             </File>
             <File>
+              <FileName>py32f0xx_hal_iwdg.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/PY32F003_HAL_Driver/Src/py32f0xx_hal_iwdg.c</FilePath>
+            </File>
+            <File>
+              <FileName>py32f0xx_hal_wwdg.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/PY32F003_HAL_Driver/Src/py32f0xx_hal_wwdg.c</FilePath>
+            </File>
+            <File>
               <FileName>py32f0xx_ll_utils.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/PY32F003_HAL_Driver/Src/py32f0xx_ll_utils.c</FilePath>
@@ -491,6 +500,11 @@
               <FilePath>../Core/SRC/barcode_rx.c</FilePath>
             </File>
             <File>
+              <FileName>barcode_store.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/SRC/barcode_store.c</FilePath>
+            </File>
+            <File>
               <FileName>host_protocol.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/SRC/host_protocol.c</FilePath>
@@ -529,6 +543,16 @@
               <FileName>usart.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/SRC/usart.c</FilePath>
+            </File>
+            <File>
+              <FileName>wwdg.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/SRC/wwdg.c</FilePath>
+            </File>
+            <File>
+              <FileName>iwdg.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/SRC/iwdg.c</FilePath>
             </File>
             <File>
               <FileName>rcc.c</FileName>

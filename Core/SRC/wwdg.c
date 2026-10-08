@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    gpio.c
+  * @file    wwdg.c
   * @brief   This file provides code for the configuration
-  *          of all used GPIO.
+  *          of all used WWDG.
   ******************************************************************************
   * @attention
   *
@@ -31,7 +31,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include "gpio.h"
+#include "wwdg.h"
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
@@ -52,6 +52,7 @@
 /* USER CODE END Macro */
 
 /* Public variables ---------------------------------------------------------*/
+WWDG_HandleTypeDef hwwdg;
 /* USER CODE BEGIN PV */
 /* USER CODE END PV */
 
@@ -71,43 +72,45 @@
 /* USER CODE END EV */
 
 /***************************************
- * @brief GPIO Init
+ * @brief WWDG Init
  **************************************/
-void Studio_GPIO_Init(void)
+void Studio_WWDG_Init(void)
 {
-  /* USER CODE BEGIN Studio_GPIO_Init 0 */
+  /* USER CODE BEGIN Studio_WWDG_Init 0 */
 
-  /* USER CODE END Studio_GPIO_Init 0 */
+  /* USER CODE END Studio_WWDG_Init 0 */
 
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  hwwdg.Instance = WWDG;
+  hwwdg.Init.Prescaler = WWDG_PRESCALER_8;
+  hwwdg.Init.Window = 0x7F;
+  hwwdg.Init.Counter = 0x7F;
+  hwwdg.Init.EWIMode = WWDG_EWI_DISABLE;
+  if (HAL_WWDG_Init(&hwwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
+  /* USER CODE BEGIN Studio_WWDG_Init 1 */
 
-  HAL_GPIO_WritePin(GPIOA, LED_R_Pin|LED_G_Pin|LED_B_Pin|KEY_Con_Pin, GPIO_PIN_RESET);
-  GPIO_InitStruct.Pin = LED_R_Pin|LED_G_Pin|LED_B_Pin|KEY_Con_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  /* USER CODE END Studio_WWDG_Init 1 */
+}
 
-  HAL_GPIO_WritePin(GPIOB, OLED_RES_Pin, GPIO_PIN_SET);
-  GPIO_InitStruct.Pin = OLED_RES_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+void HAL_WWDG_MspInit(WWDG_HandleTypeDef* hwwdg)
+{
+  if (hwwdg->Instance == WWDG)
+  {
+  /* USER CODE BEGIN WWDG_MspInit 0 */
 
-  HAL_GPIO_WritePin(GPIOB, OLED_SCL_Pin|OLED_SDA_Pin, GPIO_PIN_SET);
-  GPIO_InitStruct.Pin = OLED_SCL_Pin|OLED_SDA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  /* USER CODE END WWDG_MspInit 0 */
 
-  /* USER CODE BEGIN Studio_GPIO_Init 1 */
+    __HAL_RCC_WWDG_CLK_ENABLE();
 
-  /* USER CODE END Studio_GPIO_Init 1 */
+    HAL_NVIC_SetPriority(WWDG_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(WWDG_IRQn);
+  /* USER CODE BEGIN WWDG_MspInit 1 */
+
+  /* USER CODE END WWDG_MspInit 1 */
+  }
 }
 
 /* USER CODE BEGIN ExternalFunctions */

@@ -62,8 +62,8 @@ extern "C" {
 /* #define HAL_COMP_MODULE_ENABLED */
 /* #define HAL_OPA_MODULE_ENABLED */
 /* #define HAL_CTC_MODULE_ENABLED */
-/* #define HAL_IWDG_MODULE_ENABLED */
-/* #define HAL_WWDG_MODULE_ENABLED */
+#define HAL_IWDG_MODULE_ENABLED
+#define HAL_WWDG_MODULE_ENABLED
 /* #define HAL_LCD_MODULE_ENABLED */
 /* #define HAL_CRC_MODULE_ENABLED */
 /* #define HAL_DIV_MODULE_ENABLED */

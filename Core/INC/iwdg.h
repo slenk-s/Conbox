@@ -1,9 +1,9 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file    gpio.h
+  * @file    iwdg.h
   * @brief   This file provides code for the configuration
-  *          of all used GPIO.
+  *          of all used IWDG.
   ******************************************************************************
   * @attention
   *
@@ -31,8 +31,8 @@
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __GPIO_H__
-#define __GPIO_H__
+#ifndef __IWDG_H__
+#define __IWDG_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,22 +47,9 @@ extern "C" {
 /* USER CODE BEGIN defines */
 /* USER CODE END defines */
 
-#define LED_R_Pin GPIO_PIN_4
-#define LED_R_Port GPIOA
-#define LED_G_Pin GPIO_PIN_5
-#define LED_G_Port GPIOA
-#define LED_B_Pin GPIO_PIN_6
-#define LED_B_Port GPIOA
-#define KEY_Con_Pin GPIO_PIN_12
-#define KEY_Con_Port GPIOA
-#define OLED_RES_Pin GPIO_PIN_5
-#define OLED_RES_Port GPIOB
-#define OLED_SCL_Pin GPIO_PIN_6
-#define OLED_SCL_Port GPIOB
-#define OLED_SDA_Pin GPIO_PIN_7
-#define OLED_SDA_Port GPIOB
+extern IWDG_HandleTypeDef hiwdg;
 
-void Studio_GPIO_Init(void);
+void Studio_IWDG_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
@@ -72,4 +59,4 @@ void Studio_GPIO_Init(void);
 }
 #endif
 
-#endif /* __GPIO_H__ */
+#endif /* __IWDG_H__ */

@@ -20,11 +20,20 @@
   "custom_firmware_location": "",
   "library_copy": "all",
   "data": {
-    "lastTime": 1789696512519,
+    "lastTime": 1791463498132,
     "version": 6,
     "gpioBindings": {
       "version": 1,
       "rows": [
+        {
+          "pinName": "PA7",
+          "locked": true,
+          "source": "manual",
+          "alternates": [
+            "TIM3_CH2"
+          ],
+          "primarySignal": "TIM3_CH2"
+        },
         {
           "pinName": "PA4",
           "locked": false,
@@ -105,15 +114,6 @@
             "NRST"
           ],
           "primarySignal": "NRST"
-        },
-        {
-          "pinName": "PA7",
-          "locked": false,
-          "source": "auto",
-          "alternates": [
-            "GPIO_Output"
-          ],
-          "primarySignal": "GPIO_Output"
         },
         {
           "pinName": "PB7",
@@ -251,15 +251,6 @@
         "type": "pins-af",
         "order": 24
       },
-      "PA7;GPIO_Output": {
-        "type": "pins-af",
-        "order": 25
-      },
-      "GPIO.GPIO.body.PA7.user_label.value": {
-        "type": "global-value",
-        "order": 26,
-        "value": "LED_TEST"
-      },
       "USART1.Parameter.BasicParameters.BaudRate.value": {
         "type": "global-value",
         "order": 30,
@@ -302,8 +293,8 @@
       },
       "TIM3.Parameter.CounterSettings.Prescaler.value": {
         "type": "global-value",
-        "order": 56,
-        "value": "7"
+        "order": 168,
+        "value": "8"
       },
       "TIM3.Parameter.CounterSettings.CounterPeriod.value": {
         "type": "global-value",
@@ -393,11 +384,6 @@
         "order": 107,
         "value": "High"
       },
-      "GPIO.GPIO.body.PA7.level.value": {
-        "type": "global-value",
-        "order": 131,
-        "value": "High"
-      },
       "GPIO.GPIO.body.PA12.mode.value": {
         "type": "global-value",
         "order": 161,
@@ -443,30 +429,34 @@
         "order": 162,
         "value": "Output_OD"
       },
-      "GPIO.GPIO.body.PA12.level.value": {
-        "type": "global-value",
-        "order": 168,
-        "value": "Low"
+      "PA7;TIM3_CH2": {
+        "type": "pins-af",
+        "order": 165
       },
-      "GPIO.GPIO.body.PA6.level.value": {
+      "TIM3.MODE.Channel2.value": {
         "type": "global-value",
         "order": 167,
-        "value": "Low"
+        "value": "pwm_ch"
       },
-      "GPIO.GPIO.body.PA5.level.value": {
+      "WWDG.MODE.Activated.value": {
         "type": "global-value",
-        "order": 166,
-        "value": "Low"
+        "order": 169,
+        "value": true
       },
-      "GPIO.GPIO.body.PA4.level.value": {
+      "WWDG.NVIC.body.WWDG_IRQn.enable.value": {
         "type": "global-value",
-        "order": 165,
-        "value": "Low"
+        "order": 176,
+        "value": true
       },
-      "GPIO.GPIO.body.PA7.mode.value": {
+      "WWDG.Parameter.EWIMode.value": {
         "type": "global-value",
-        "order": 160,
-        "value": "Output_PP"
+        "order": 179,
+        "value": "Enable"
+      },
+      "IWDG.MODE.Activated.value": {
+        "type": "global-value",
+        "order": 180,
+        "value": true
       }
     }
   },

@@ -2,18 +2,22 @@
 #define BARCODE_APP_H
 #include "host_protocol.h"
 #include "barcode_port.h"
-typedef enum { APP_IDLE, APP_WAIT_RESULT, APP_RELEASING } AppState;
-typedef enum { VIEW_IDLE, VIEW_WAIT, VIEW_RELEASE, VIEW_FAILED } ViewState;
-/* count is the number of PASSes, shown on the panel; it is not a history log. */
+#include "barcode_store.h"
+enum { APP_IDLE = 0, APP_WAIT_RESULT = 1, APP_RELEASING = 2, APP_DUPLICATE = 3, APP_FAILED = 4 };
+enum { VIEW_IDLE, VIEW_WAIT, VIEW_RELEASE, VIEW_FAILED, VIEW_DUPLICATE };
+#define RELAY_MS 200u
+#define GREEN_MS 2000u
+#define RESCAN_MS 3000u
+/* pass_count = PASSes. ng_count = red-fail events. buffer_count = current FIFO length. */
 typedef struct {
-    AppState state; ViewState view; Barcode current; uint16_t count;
+    int state, view;
+    Barcode current;
+    uint16_t pass_count, ng_count, buffer_count;
     bool comm_fault;
 } AppSnapshot;
 void BarcodeApp_Init(uint32_t t0);
 void BarcodeApp_OnBarcode(const Barcode *b, uint32_t now);
 void BarcodeApp_OnFrame(const HostFrame *fr, uint32_t handled_at);
-/* Advance event time while draining an RX backlog, so the relay release
-   deadline does not underflow against events that were received earlier. */
 void BarcodeApp_AdvanceTime(uint32_t now);
 void BarcodeApp_Tick(uint32_t now);
 bool BarcodeApp_IsBusy(void);

@@ -4,41 +4,158 @@
 #include "barcode_view.h"
 #include "fake_port.h"
 #include "oled_stub.h"
-/* Design section 5 red frame: manual fail that flips the snapshot to FAILED. */
 static void send_red(uint32_t t)
 {
     HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_LIGHT, HOST_PARAM_RED_FAIL, true };
     BarcodeApp_OnFrame(&f, t);
 }
-/* A snapshot change that lands mid-refresh must not abandon that refresh:
-   the panel would otherwise keep stale rows from the previous frame. */
-static void test_refresh_not_abandoned(void){unsigned i;Barcode z={1,{'Z'}};
- FakePort_Reset();OledStub_Reset();BarcodeApp_Init(0);BarcodeView_Init();
- for(i=0;i<366;i++)BarcodeView_Poll();
- assert(!strncmp(stub_screen[0],"IDLE",4) && !OLED_RefreshPending());
- BarcodeApp_OnBarcode(&z,10);
- for(i=0;i<84;i++)BarcodeView_Poll();
- assert(!strncmp(stub_screen[0],"RECOGNIZING",11) && OLED_RefreshPending());
- for(i=0;i<40;i++)BarcodeView_Poll();           /* refresh 40/282 in flight */
- send_red(10);               /* snapshot changes mid-refresh */
- for(i=0;i<700;i++)BarcodeView_Poll();
- assert(!strncmp(stub_screen[0],"FAILED",6) && !strncmp(stub_screen[3],"Z",1) && !OLED_RefreshPending());
+static void send_pass(uint32_t t)
+{
+    HostFrame f = { true, HOST_ADDR_BOX, HOST_CMD_PASS, 0, false };
+    BarcodeApp_OnFrame(&f, t);
 }
-int main(void){AppSnapshot s;char lines[6][15];unsigned i,n;Barcode b={21,{0}}; memset(&s,0,sizeof(s));s.view=VIEW_WAIT;s.count=150;s.current.len=21;memcpy(s.current.data,"123456789012345678901",21);
- BarcodeView_Format(&s,lines);assert(strcmp(lines[0],"RECOGNIZING   ")==0);
- assert(strncmp(lines[1],"PASS:150",8)==0 && strcmp(lines[3],"12345678901234")==0 && strcmp(lines[4],"5678901       ")==0);
- for(i=0;i<6;i++)assert(lines[i][14]==0);
- s.current.data[1]=0;BarcodeView_Format(&s,lines);assert(lines[3][1]=='.' && s.current.data[1]==0);
- s.current.len=1;BarcodeView_Format(&s,lines);assert(lines[3][1]==' ' && lines[4][0]==' ');
- s.comm_fault=true;BarcodeView_Format(&s,lines);assert(strncmp(lines[5],"COMM ERROR",10)==0);
- FakePort_Reset();OledStub_Reset();BarcodeApp_Init(0);BarcodeView_Init();
- for(i=0;i<600;i++){n=stub_draw_count;BarcodeView_Poll();assert(stub_draw_count-n<=1);}
- assert(strncmp(stub_screen[0],"IDLE",4)==0);n=stub_refresh_count;BarcodeView_Poll();assert(n==stub_refresh_count);
- memcpy(b.data,"123456789012345678901",21);BarcodeApp_OnBarcode(&b,10);
- for(i=0;i<5;i++)BarcodeView_Poll();
- send_red(10);b.len=1;b.data[0]='Z';BarcodeApp_OnBarcode(&b,20);
- for(i=0;i<600;i++)BarcodeView_Poll();
- assert(stub_screen[3][0]=='Z' && stub_screen[3][1]==' ' && stub_screen[4][0]==' ');
- assert(strncmp(stub_screen[0],"RECOGNIZING",11)==0);
- test_refresh_not_abandoned();
- puts("PASS view: six-row layout, full 21-byte barcode, nonprintable copy, incremental render, superseded view");return 0;}
+/* The six-row layout: [state] / P:n / N:n / C:n / BARCODE / <bytes>. */
+static void test_layout(void)
+{
+    AppSnapshot s;
+    char lines[6][15];
+    unsigned i;
+    memset(&s, 0, sizeof(s));
+    s.view = VIEW_IDLE;
+    s.pass_count = 0; s.ng_count = 0; s.buffer_count = 0;
+    s.current.len = 0;
+    BarcodeView_Format(&s, lines);
+    assert(strcmp(lines[0], "IDLE          ") == 0);
+    assert(strcmp(lines[1], "P:000         ") == 0);
+    assert(strcmp(lines[2], "N:000         ") == 0);
+    assert(strcmp(lines[3], "C:000         ") == 0);
+    assert(strcmp(lines[4], "BC:           ") == 0);
+    assert(strcmp(lines[5], "              ") == 0);
+    for (i = 0; i < 6u; ++i) assert(lines[i][14] == '\0');
+
+    /* WAIT + counts + a 21-byte barcode split 11 on row 4, 10 on row 5. */
+    memset(&s, 0, sizeof(s));
+    s.view = VIEW_WAIT;
+    s.pass_count = 150; s.ng_count = 3; s.buffer_count = 42;
+    s.current.len = 21;
+    memcpy(s.current.data, "123456789012345678901", 21u);
+    BarcodeView_Format(&s, lines);
+    assert(strcmp(lines[0], "RECOGNIZING   ") == 0);
+    assert(strcmp(lines[1], "P:150         ") == 0);
+    assert(strcmp(lines[2], "N:003         ") == 0);
+    assert(strcmp(lines[3], "C:042         ") == 0);
+    assert(strcmp(lines[4], "BC:12345678901") == 0);
+    assert(strcmp(lines[5], "2345678901    ") == 0);
+
+    /* Non-printable byte maps to '.'. */
+    s.current.data[1] = 0;
+    BarcodeView_Format(&s, lines);
+    assert(lines[4][4] == '.');
+    assert(s.current.data[1] == 0);
+
+    /* SHORT barcode: row 5 stays blank. */
+    s.current.len = 1;
+    s.current.data[0] = 'Z';
+    BarcodeView_Format(&s, lines);
+    assert(lines[4][3] == 'Z');
+    assert(lines[4][4] == ' ');
+    assert(lines[5][0] == ' ');
+
+    /* FAILED view. */
+    s.view = VIEW_FAILED;
+    s.current.len = 0;
+    BarcodeView_Format(&s, lines);
+    assert(strcmp(lines[0], "FAILED        ") == 0);
+
+    /* DUPLICATE view. */
+    s.view = VIEW_DUPLICATE;
+    BarcodeView_Format(&s, lines);
+    assert(strcmp(lines[0], "DUPLICATE     ") == 0);
+
+    /* Comm fault adds "ERR" tag after the state label. */
+    s.view = VIEW_IDLE;
+    s.comm_fault = true;
+    BarcodeView_Format(&s, lines);
+    assert(strncmp(lines[0], "IDLE ERR", 8u) == 0);
+}
+/* Change detection: a change to any of the four count/view/comm-fault/current
+   fields triggers a redraw; no change leaves the panel untouched. */
+static void test_change_detection(void)
+{
+    unsigned i, n;
+    Barcode b = {3, {'A', 'B', 'C'}};
+    FakePort_Reset();
+    OledStub_Reset();
+    BarcodeApp_Init(0);
+    BarcodeView_Init();
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[0], "IDLE", 4));
+    assert(!strncmp(stub_screen[1], "P:000", 5));
+    n = stub_draw_count;
+    BarcodeApp_OnBarcode(&b, 10);
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(stub_draw_count > n);
+    assert(!strncmp(stub_screen[0], "RECOGNIZING", 11));
+    assert(!strncmp(stub_screen[1], "P:000", 5));
+    assert(!strncmp(stub_screen[2], "N:000", 5));
+    assert(!strncmp(stub_screen[3], "C:000", 5));
+    assert(stub_screen[4][3] == 'A');
+    assert(stub_screen[4][4] == 'B');
+    assert(stub_screen[4][5] == 'C');
+
+    /* A PASS increments P and C together. */
+    send_pass(20);
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[1], "P:001", 5));
+    assert(!strncmp(stub_screen[3], "C:001", 5));
+    assert(!strncmp(stub_screen[0], "RELEASING", 9));
+
+    /* Red-fail in WAIT_RESULT increments N (this test is at RELEASING now,
+       so it is inert — advance past release first). */
+    {
+        unsigned t;
+        for (t = 0; t < 2200u; t += 100u) BarcodeApp_Tick(t);
+    }
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[0], "IDLE", 4));
+    /* Push a fresh barcode into WAIT_RESULT before the RED_FAIL test. */
+    {
+        Barcode d = {3, {'D', 'e', '1'}};
+        BarcodeApp_OnBarcode(&d, 3000);
+    }
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    send_red(3100);
+    for (i = 0; i < 300u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[0], "FAILED", 6));
+    assert(!strncmp(stub_screen[2], "N:001", 5));
+}
+/* Mid-refresh snapshot change must not abandon the refresh. */
+static void test_refresh_not_abandoned(void)
+{
+    unsigned i;
+    Barcode z = {1, {'Z'}};
+    FakePort_Reset();
+    OledStub_Reset();
+    BarcodeApp_Init(0);
+    BarcodeView_Init();
+    for (i = 0; i < 366u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[0], "IDLE", 4) && !OLED_RefreshPending());
+    BarcodeApp_OnBarcode(&z, 10);
+    for (i = 0; i < 84u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[0], "RECOGNIZING", 11) && OLED_RefreshPending());
+    for (i = 0; i < 40u; ++i) BarcodeView_Poll();
+    send_red(10);
+    for (i = 0; i < 700u; ++i) BarcodeView_Poll();
+    assert(!strncmp(stub_screen[0], "FAILED", 6));
+    assert(stub_screen[4][3] == 'Z');
+    assert(!OLED_RefreshPending());
+}
+int main(void)
+{
+    test_layout();
+    test_change_detection();
+    test_refresh_not_abandoned();
+    puts("PASS view: 6-row layout with P/N/C counts, state labels, nonprintable, "
+         "incremental render, superseded view");
+    return 0;
+}

@@ -72,21 +72,28 @@ void BarcodeView_Init(void)
 }
 void BarcodeView_Format(const AppSnapshot *s, char lines[6][15])
 {
-    static const char *const labels[] = {"IDLE", "RECOGNIZING", "RELEASING", "FAILED"};
+    static const char *const labels[] = {"IDLE", "RECOGNIZING", "RELEASING", "FAILED", "DUPLICATE"};
     uint8_t i;
-    const char *label = labels[(unsigned)s->view <= VIEW_FAILED ? s->view : VIEW_IDLE];
+    const char *const prefixes[] = {"P:", "N:", "C:"};
+    uint16_t counts[] = {s->pass_count, s->ng_count, s->buffer_count};
+    const char *label = labels[(unsigned)s->view <= VIEW_DUPLICATE ? s->view : VIEW_IDLE];
+    int r;
     for (i = 0; i < 6u; ++i) { memset(lines[i], ' ', 14); lines[i][14] = '\0'; }
     memcpy(lines[0], label, strlen(label));
-    memcpy(lines[1], "PASS:000", 8);
-    lines[1][5] = (char)('0' + s->count / 100u);
-    lines[1][6] = (char)('0' + (s->count / 10u) % 10u);
-    lines[1][7] = (char)('0' + s->count % 10u);
-    memcpy(lines[2], "BARCODE:", 8);
+    if (s->comm_fault) { memcpy(lines[0] + strlen(label) + 1u, "ERR", 4); }
+    for (r = 0; r < 3; ++r) {
+        char *row = lines[1u + (uint8_t)r];
+        memcpy(row, prefixes[r], 2u);
+        row[2u] = (char)('0' + counts[r] / 100u);
+        row[3u] = (char)('0' + (counts[r] / 10u) % 10u);
+        row[4u] = (char)('0' + counts[r] % 10u);
+    }
+    memcpy(lines[4u], "BC:", 3);
     for (i = 0; i < s->current.len && i < BARCODE_MAX_LEN; ++i) {
         uint8_t c = s->current.data[i];
-        lines[3u + i / 14u][i % 14u] = (char)(c >= 32u && c <= 126u ? c : '.');
+        if (i < 11u) lines[4u][3u + i] = (char)(c >= 32u && c <= 126u ? c : '.');
+        else lines[5u][i - 11u] = (char)(c >= 32u && c <= 126u ? c : '.');
     }
-    if (s->comm_fault) memcpy(lines[5], "COMM ERROR", 10);
 }
 static void draw_next(void)
 {
@@ -115,7 +122,8 @@ void BarcodeView_Poll(void)
 #else
     AppSnapshot s;
     BarcodeApp_GetSnapshot(&s);
-    if (!valid || s.view != previous.view || s.count != previous.count ||
+    if (!valid || s.view != previous.view || s.pass_count != previous.pass_count ||
+        s.ng_count != previous.ng_count || s.buffer_count != previous.buffer_count ||
         s.comm_fault != previous.comm_fault || s.current.len != previous.current.len ||
         memcmp(s.current.data, previous.current.data, BARCODE_MAX_LEN) != 0) {
         previous = s;

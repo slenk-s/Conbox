@@ -10,21 +10,65 @@ static const uint8_t green[]={0xAA,8,0xFA,1,6,0x31,0x27,0x15};
 static const uint8_t yellow[]={0xAA,8,0xFA,1,6,0x2F,0xD4,0xEA};
 static void init(void){Stub_Reset();BarcodeApp_Init(0);BarcodePort_Init();}
 static void scan(const char *p,uint32_t at){Stub_Bytes(1,(const uint8_t *)p,(unsigned)strlen(p),at);}
-static void test_order(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();assert(stub_wire_len[0]==2);
+static void test_order(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();assert(stub_wire_len[0]==3);
  scan("B\r\n",2);Stub_Bytes(0,red,8,3);scan("C\r\n",4);stub_now=20;Stub_Drain();
- assert(stub_wire_len[0]==11 && memcmp(stub_wire[0],"A\r",2)==0);
- assert(memcmp(stub_wire[0]+2,BARCODE_ACK,7)==0 && memcmp(stub_wire[0]+9,"C\r",2)==0);
- assert(stub_wire_len[1]==3);BarcodeApp_GetSnapshot(&s);assert(s.current.data[0]=='C' && s.state==APP_WAIT_RESULT);
+ assert(stub_wire_len[0]==16);
+ assert(memcmp(stub_wire[0],"A\r\n",3)==0);
+ assert(memcmp(stub_wire[0]+3,"B\r\n",3)==0);
+ assert(memcmp(stub_wire[0]+6,BARCODE_ACK,7)==0);
+ assert(memcmp(stub_wire[0]+13,"C\r\n",3)==0);
+ assert(stub_wire_len[1]==0);BarcodeApp_GetSnapshot(&s);assert(s.current.data[0]=='C' && s.state==APP_WAIT_RESULT);
 }
-static void test_release_history(void){AppSnapshot s;init();scan("A\r\n",1);Stub_Drain();
- Stub_Bytes(0,pass,8,10);scan("B\r\n",15);stub_now=20;Stub_Drain();assert(stub_relay);
- stub_now=1019;BarcodePort_Poll();assert(stub_relay);scan("part",1019);stub_now=1020;BarcodePort_Poll();assert(!stub_relay);
- scan("tail\r\n",1021);Stub_Drain();assert(stub_wire_len[0]==9);
- scan("C\r\n",1022);Stub_Drain();assert(stub_wire_len[0]==11);
- BarcodeApp_GetSnapshot(&s);assert(s.current.data[0]=='C');
- /* A red frame received while releasing, but processed after deadline, must not rescan. */
- init();scan("A\r\n",1);Stub_Drain();Stub_Bytes(0,pass,8,10);Stub_Drain();
- Stub_Bytes(0,red,8,500);stub_now=1500;Stub_Drain();assert(!stub_relay);
+static void test_release_history(void){
+    AppSnapshot s;
+    /* The relay is held RELAY_MS from the PASS frame's processed time.
+       The processed time is HAL_GetTick() at the moment OnFrame runs,
+       which for a drained frame equals the last byte-time of the drained
+       RX event. To keep arithmetic deterministic, put PASS and the
+       following scan at well-spaced times so release_started is known. */
+    init();
+    scan("A\r\n", 100);
+    Stub_Drain();
+    Stub_Bytes(0, pass, 8, 200);
+    Stub_Drain();
+    BarcodeApp_GetSnapshot(&s);
+    assert(s.state == APP_RELEASING && stub_relay);
+    /* release_started=200; relay off at 400, state back to IDLE at 2200. */
+    stub_now = 399; BarcodePort_Poll(); assert(stub_relay);
+    stub_now = 400; BarcodePort_Poll(); assert(!stub_relay);
+    BarcodeApp_GetSnapshot(&s);
+    assert(s.state == APP_RELEASING);
+    /* Scan during RELEASING is dropped. */
+    {
+        unsigned before = stub_wire_len[0];
+        scan("B\r\n", 500);
+        Stub_Drain();
+        assert(stub_wire_len[0] == before);
+    }
+    /* Advance past GREEN_MS: state returns to IDLE, next scan uploads. */
+    stub_now = 2200; BarcodePort_Poll();
+    BarcodeApp_GetSnapshot(&s);
+    assert(s.state == APP_IDLE);
+    {
+        unsigned before = stub_wire_len[0];
+        scan("C\r\n", 2201);
+        Stub_Drain();
+        assert(stub_wire_len[0] == before + 3);
+        assert(stub_wire[0][before] == 'C');
+    }
+    BarcodeApp_GetSnapshot(&s);
+    assert(s.current.data[0] == 'C' && s.state == APP_WAIT_RESULT);
+    /* A red frame received while releasing, but processed after deadline,
+       must not fire the rescan (state is no longer WAIT_RESULT). */
+    init();
+    scan("A\r\n", 100);
+    Stub_Drain();
+    Stub_Bytes(0, pass, 8, 200);
+    Stub_Drain();
+    Stub_Bytes(0, red, 8, 500);
+    stub_now = 1500;
+    Stub_Drain();
+    assert(!stub_relay);
 }
 static void test_tx(void){uint8_t data[]={1,2,3};unsigned i;BarcodePortStats stats;
  init();assert(BarcodePort_SendHost(data,3));data[0]=9;stub_tx_status[0]=HAL_BUSY;BarcodePort_Poll();assert(!stub_tx_ptr[0] && !BarcodePort_HasFault());
@@ -36,7 +80,7 @@ static void test_completed_slot(void){
  uint8_t data[]={1,2,3};unsigned i;
  init();for(i=0;i<16;i++)assert(BarcodePort_SendHost(data,3));
  BarcodePort_Poll();Stub_Complete(0);
- assert(BarcodePort_SendHost(data,3)); /* completed slot is already free, no false overflow */
+ assert(BarcodePort_SendHost(data,3));
  assert(!BarcodePort_HasFault());Stub_Drain();assert(stub_wire_len[0]==51);
 }
 static void test_rx_fault(void){AppSnapshot s;BarcodePortStats stats;unsigned i,err;
@@ -44,10 +88,9 @@ static void test_rx_fault(void){AppSnapshot s;BarcodePortStats stats;unsigned i,
  assert(stats.rx_overflow>0 && BarcodePort_HasFault());scan("\r\nB\r\n",2);Stub_Drain();assert(stub_wire_len[0]==0);
  for(err=1;err<=8;err*=2){
   init();scan("A",1);BarcodePort_Poll();husart2.ErrorCode=err;HAL_UART_ErrorCallback(&husart2);BarcodePort_Poll();
-  assert(husart2.receiving);scan("tail\r\nB\r\n",2);Stub_Drain();BarcodeApp_GetSnapshot(&s);assert(s.comm_fault && s.count==0 && stub_wire_len[0]==0);
+  assert(husart2.receiving);scan("tail\r\nB\r\n",2);Stub_Drain();BarcodeApp_GetSnapshot(&s);assert(s.comm_fault && s.pass_count==0 && stub_wire_len[0]==0);
  }
  init();stub_rx_status[1]=HAL_BUSY;Stub_Byte(1,'A',1);BarcodePort_Poll();assert(BarcodePort_HasFault());stub_rx_status[1]=HAL_OK;BarcodePort_Poll();assert(husart2.receiving);
- /* HAL can invoke RX completion with ErrorCode set before ErrorCallback. Never accept that byte. */
  init();scan("A\r",1);BarcodePort_Poll();husart2.ErrorCode=HAL_UART_ERROR_FE;Stub_Byte(1,'\n',2);HAL_UART_ErrorCallback(&husart2);BarcodePort_Poll();assert(stub_wire_len[0]==0 && BarcodePort_HasFault());
  init();scan("A\r\n",1);Stub_Drain();Stub_Bytes(0,pass,8,10);Stub_Drain();husart1.ErrorCode=HAL_UART_ERROR_ORE;HAL_UART_ErrorCallback(&husart1);stub_now=1010;BarcodePort_Poll();assert(!stub_relay);
 }
@@ -70,21 +113,40 @@ static void test_fault_masks_pass(void){AppSnapshot s;
  husart2.ErrorCode=HAL_UART_ERROR_FE;HAL_UART_ErrorCallback(&husart2);
  Stub_Drain();BarcodeApp_GetSnapshot(&s);assert(s.comm_fault);
  Stub_Bytes(0,pass,8,5);Stub_Drain();BarcodeApp_GetSnapshot(&s);
- assert(s.state==APP_IDLE && s.count==0 && !stub_relay && stub_wire_len[0]==14);
+ assert(s.pass_count==0 && !stub_relay && stub_wire_len[0]==14);
  Stub_Bytes(0,green,8,6);Stub_Drain();assert(stub_green && !stub_red && !stub_relay && stub_wire_len[0]==21);
  scan("A\r\n",7);Stub_Drain();BarcodeApp_GetSnapshot(&s);
- assert(s.state==APP_IDLE && stub_wire_len[0]==21);
+ assert(stub_wire_len[0]==21);
  /* A frame already queued before the error is dropped with the ring, not parsed. */
  init();husart2.ErrorCode=HAL_UART_ERROR_FE;HAL_UART_ErrorCallback(&husart2);
  Stub_Bytes(0,pass,8,5);Stub_Drain();assert(stub_wire_len[0]==0);
 }
+/* Red-fail schedules exactly one rescan, RESCAN_MS after the fail frame is
+   processed. Before that deadline nothing goes on the scanner wire. */
 static void test_rescan(void){
- init();Stub_Bytes(0,red,8,1);Stub_Drain();
- assert(stub_wire_len[1]==0);
- scan("A\r\n",5);Stub_Drain();Stub_Bytes(0,red,8,6);Stub_Drain();
- assert(stub_wire_len[1]==3 && memcmp(stub_wire[1],BARCODE_RESCAN,3)==0);
- assert(stub_tx_calls[1]==1);
- init();Stub_Bytes(0,pass,8,1);Stub_Drain();
- assert(stub_wire_len[1]==0);
+    init();
+    Stub_Bytes(0, red, 8, 1);
+    Stub_Drain();
+    assert(stub_wire_len[1] == 0);
+    scan("A\r\n", 5);
+    Stub_Drain();
+    Stub_Bytes(0, red, 8, 6);
+    Stub_Drain();
+    /* Rescan not yet due: stub_now is still 6. */
+    assert(stub_wire_len[1] == 0);
+    /* Advance past RESCAN_MS. */
+    stub_now = 3010;
+    Stub_Drain();
+    assert(stub_wire_len[1] == 3 && memcmp(stub_wire[1], BARCODE_RESCAN, 3) == 0);
+    assert(stub_tx_calls[1] == 1);
+    /* No second rescan without another fail command. */
+    stub_now = 6010;
+    Stub_Drain();
+    assert(stub_tx_calls[1] == 1);
+    /* PASS does not fire the rescan (it goes to RELEASING, no red-fail). */
+    init();
+    Stub_Bytes(0, pass, 8, 1);
+    Stub_Drain();
+    assert(stub_wire_len[1] == 0);
 }
-int main(void){test_order();test_release_history();test_tx();test_completed_slot();test_rx_fault();test_commands();test_fault_masks_pass();test_rescan();puts("PASS port: chronological RX, half-frame discard, copied TX/BUSY, ring/queue overflow, UART errors, pins, light phases");return 0;}
+int main(void){test_order();test_release_history();test_tx();test_completed_slot();test_rx_fault();test_commands();test_fault_masks_pass();test_rescan();puts("PASS port: chronological RX, half-frame discard, copied TX/BUSY, ring/queue overflow, UART errors, pins, light phases, rescan at RESCAN_MS");return 0;}
